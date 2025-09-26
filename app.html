@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dedufy App - Interactive Learning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+      }
+      /* Glass Effect */
+      .glass {
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      /* Custom scrollbar for a cleaner look */
+      #chatBox::-webkit-scrollbar {
+        width: 6px;
+      }
+      #chatBox::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #chatBox::-webkit-scrollbar-thumb {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 10px;
+      }
+      /* Typing indicator animation */
+      .dot-flashing {
+        position: relative;
+        width: 5px;
+        height: 5px;
+        border-radius: 5px;
+        background-color: #555;
+        color: #555;
+        animation: dot-flashing 1s infinite linear alternate;
+        animation-delay: 0.5s;
+      }
+      .dot-flashing::before,
+      .dot-flashing::after {
+        content: "";
+        display: inline-block;
+        position: absolute;
+        top: 0;
+      }
+      .dot-flashing::before {
+        left: -10px;
+        width: 5px;
+        height: 5px;
+        border-radius: 5px;
+        background-color: #555;
+        color: #555;
+        animation: dot-flashing 1s infinite alternate;
+        animation-delay: 0s;
+      }
+      .dot-flashing::after {
+        left: 10px;
+        width: 5px;
+        height: 5px;
+        border-radius: 5px;
+        background-color: #555;
+        color: #555;
+        animation: dot-flashing 1s infinite alternate;
+        animation-delay: 1s;
+      }
+      @keyframes dot-flashing {
+        0% {
+          background-color: #555;
+        }
+        50%,
+        100% {
+          background-color: #d1d5db;
+        }
+      }
+    </style>
+  </head>
+  <body
+    class="bg-gradient-to-br from-[#FAFDD6] to-[#AED6CF] min-h-screen flex items-center justify-center p-4"
+  >
+    <div
+      id="app"
+      class="w-full max-w-2xl glass rounded-2xl shadow-2xl p-6 md:p-8 flex flex-col max-h-[90vh]"
+    >
+      <header
+        class="flex justify-between items-center mb-6 pb-4 border-b border-gray-200"
+      >
+        <h1 class="text-xl font-bold text-gray-800">🎓 Dedufy</h1>
+        <a
+          href="index.html"
+          class="text-sm font-medium text-teal-700 hover:text-teal-900 transition"
+          >← Back to Homepage</a
+        >
+      </header>
+
+      <div id="material-section">
+        <form id="upload-form">
+          <label class="block mb-2 text-gray-700 font-medium"
+            >1. Upload Your Study Material</label
+          >
+
+          <div
+            id="dropzone"
+            class="flex flex-col items-center justify-center w-full p-6 border-2 border-dashed border-gray-300 rounded-lg bg-white/50 text-gray-500 cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition"
+          >
+            <p class="text-sm">📂 Drag & drop file here or click to select</p>
+            <p class="text-xs mt-1">Supports: .txt, .pdf, .docx</p>
+            <input
+              type="file"
+              id="fileInput"
+              accept=".txt,.pdf,.docx"
+              class="hidden"
+            />
+          </div>
+
+          <div id="file-preview" class="hidden mt-4">
+            <div
+              class="flex items-center justify-between bg-teal-50 border border-teal-200 text-teal-800 text-sm font-medium px-4 py-2 rounded-lg"
+            >
+              <div class="flex items-center gap-2">
+                <span id="file-icon">📄</span>
+                <span id="file-name">filename.pdf</span>
+                <span id="file-size" class="text-xs text-gray-500"></span>
+              </div>
+              <button
+                type="button"
+                id="remove-file-btn"
+                class="font-mono font-bold text-lg hover:text-red-500"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-4 mt-6">
+            <div>
+              <label
+                for="difficultySelect"
+                class="block text-gray-700 font-medium mb-2"
+                >2. Difficulty Level</label
+              >
+              <select
+                id="difficultySelect"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="adaptive" selected>Adaptive</option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">
+                Adaptive adjusts to your answers.
+              </p>
+            </div>
+            <div>
+              <label
+                for="agentModeSelect"
+                class="block text-gray-700 font-medium mb-2"
+                >3. AI Mode</label
+              >
+              <select
+                id="agentModeSelect"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="strict">Strict Teacher</option>
+                <option value="friendly" selected>Friendly Tutor</option>
+                <option value="exam">Exam Simulator</option>
+              </select>
+              <p class="text-xs text-gray-500 mt-1">
+                Changes the AI's personality.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="startBtn"
+            type="submit"
+            class="w-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white px-4 py-3 rounded-lg font-semibold transition mt-6 shadow-md hover:shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled
+          >
+            🚀 Start Test
+          </button>
+        </form>
+      </div>
+
+      <div id="loading-spinner" class="hidden text-center py-10">
+        <div
+          class="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"
+        ></div>
+        <p class="mt-4 text-gray-600">
+          AI is analyzing your document, please wait...
+        </p>
+      </div>
+
+      <div
+        id="chat-section"
+        class="hidden flex-1 flex flex-col overflow-hidden"
+      >
+        <div
+          id="chatBox"
+          class="flex-1 overflow-y-auto mb-4 space-y-4 p-4 bg-white/50 rounded-lg"
+          aria-live="polite"
+        >
+          <div id="typing-indicator" class="hidden">
+            <div class="flex items-start gap-3">
+              <span
+                class="flex-shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full bg-gray-200"
+                >🤖</span
+              >
+              <div class="bg-gray-200 p-3 rounded-lg rounded-tl-none">
+                <div class="dot-flashing"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="answerInput"
+            placeholder="Type your answer..."
+            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+          <button
+            id="sendBtn"
+            class="bg-gradient-to-r from-teal-500 to-cyan-500 text-white px-6 py-2 rounded-lg font-semibold transition shadow-md hover:shadow-lg hover:opacity-90"
+          >
+            Send
+          </button>
+          <button
+            id="restartBtn"
+            class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition shadow-md hover:shadow-lg"
+          >
+            Restart
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

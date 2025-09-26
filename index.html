@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dedufy - Learn Smarter, Not Harder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background: linear-gradient(135deg, #fafdd6 0%, #aed6cf 100%);
+        min-height: 100vh;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      .font-display {
+        font-family: "Space Grotesk", sans-serif;
+      }
+
+      /* Animated Background */
+      .animated-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #fafdd6 0%, #aed6cf 100%);
+        z-index: -2;
+      }
+
+      .floating-shapes {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        overflow: hidden;
+        z-index: -1;
+      }
+
+      .shape {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(40px);
+        animation: float 20s infinite ease-in-out;
+      }
+
+      .shape1 {
+        width: 300px;
+        height: 300px;
+        background: rgba(174, 214, 207, 0.3);
+        top: 10%;
+        left: 10%;
+        animation-delay: 0s;
+      }
+
+      .shape2 {
+        width: 400px;
+        height: 400px;
+        background: rgba(250, 253, 214, 0.3);
+        top: 60%;
+        right: 10%;
+        animation-delay: 5s;
+      }
+
+      .shape3 {
+        width: 250px;
+        height: 250px;
+        background: rgba(174, 214, 207, 0.2);
+        bottom: 20%;
+        left: 30%;
+        animation-delay: 10s;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        25% {
+          transform: translate(30px, -30px) rotate(90deg);
+        }
+        50% {
+          transform: translate(-20px, 20px) rotate(180deg);
+        }
+        75% {
+          transform: translate(-30px, -20px) rotate(270deg);
+        }
+      }
+
+      /* Glass Effect */
+      .glass {
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+
+      .glass-dark {
+        background: rgba(0, 0, 0, 0.05);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      /* Text Gradient */
+      .gradient-text {
+        background: linear-gradient(135deg, #2d5f5a 0%, #4a8b82 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .gradient-text-light {
+        background: linear-gradient(135deg, #6b9b94 0%, #8fc4bb 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* Button Styles */
+      .btn-primary {
+        background: linear-gradient(135deg, #2d5f5a 0%, #4a8b82 100%);
+        color: white;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 30px rgba(45, 95, 90, 0.3);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 40px rgba(45, 95, 90, 0.4);
+      }
+
+      .btn-primary::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.2),
+          transparent
+        );
+        transition: left 0.5s;
+      }
+
+      .btn-primary:hover::before {
+        left: 100%;
+      }
+
+      /* Card Hover Effect */
+      .feature-card {
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .feature-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+          135deg,
+          transparent,
+          rgba(255, 255, 255, 0.1)
+        );
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+      }
+
+      .feature-card:hover::before {
+        transform: translateY(0);
+      }
+
+      .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Smooth Scroll */
+      html {
+        scroll-behavior: smooth;
+      }
+
+      /* Icon Animation */
+      @keyframes bounce {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-10px);
+        }
+      }
+
+      .bounce-icon {
+        animation: bounce 2s infinite;
+      }
+
+      /* Pricing Card */
+      .pricing-card {
+        transition: all 0.3s ease;
+      }
+
+      .pricing-card:hover {
+        transform: translateY(-10px);
+      }
+
+      .popular-badge {
+        background: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.05);
+        }
+      }
+
+      /* Nav Link Hover */
+      .nav-link {
+        position: relative;
+        transition: color 0.3s ease;
+      }
+
+      .nav-link::after {
+        content: "";
+        position: absolute;
+        bottom: -5px;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #2d5f5a, #4a8b82);
+        transition: width 0.3s ease;
+      }
+
+      .nav-link:hover::after {
+        width: 100%;
+      }
+
+      /* Scroll Reveal (Improved for JS Intersection Observer) */
+      .reveal {
+        opacity: 0;
+        transform: translateY(30px);
+        transition: opacity 0.8s ease, transform 0.8s ease;
+      }
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .delay-1 {
+        transition-delay: 0.1s;
+      }
+      .delay-2 {
+        transition-delay: 0.2s;
+      }
+      .delay-3 {
+        transition-delay: 0.3s;
+      }
+      .delay-4 {
+        transition-delay: 0.4s;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="animated-bg"></div>
+    <div class="floating-shapes">
+      <div class="shape shape1"></div>
+      <div class="shape shape2"></div>
+      <div class="shape shape3"></div>
+    </div>
+
+    <header
+      class="w-full py-4 px-6 md:px-10 flex justify-between items-center glass sticky top-0 z-50 shadow-lg"
+    >
+      <div class="flex items-center space-x-2">
+        <div class="bounce-icon">
+          <span class="text-3xl">🎓</span>
+        </div>
+        <h1 class="text-2xl font-bold font-display gradient-text">Dedufy</h1>
+      </div>
+
+      <nav class="hidden md:flex space-x-8 font-medium">
+        <a href="#features" class="nav-link text-gray-700 hover:text-gray-900"
+          >Features</a
+        >
+        <a href="#pricing" class="nav-link text-gray-700 hover:text-gray-900"
+          >Plans</a
+        >
+        <a
+          href="#testimonials"
+          class="nav-link text-gray-700 hover:text-gray-900"
+          >Testimonials</a
+        >
+        <a
+          href="#get-started"
+          class="nav-link text-gray-700 hover:text-gray-900"
+          >Get Started</a
+        >
+      </nav>
+
+      <a
+        href="app.html"
+        class="btn-primary px-6 py-3 rounded-full font-semibold hidden md:inline-block"
+      >
+        Launch App ✨
+      </a>
+
+      <button id="menu-btn" class="md:hidden text-gray-700 z-50">
+        <svg
+          class="w-6 h-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 6h16M4 12h16M4 18h16"
+          ></path>
+        </svg>
+      </button>
+
+      <div
+        id="mobile-menu"
+        class="md:hidden hidden absolute top-full left-0 w-full glass-dark p-6 shadow-lg"
+      >
+        <nav class="flex flex-col space-y-4 text-center">
+          <a
+            href="#features"
+            class="nav-link text-gray-700 hover:text-gray-900 py-2"
+            >Features</a
+          >
+          <a
+            href="#pricing"
+            class="nav-link text-gray-700 hover:text-gray-900 py-2"
+            >Plans</a
+          >
+          <a
+            href="#testimonials"
+            class="nav-link text-gray-700 hover:text-gray-900 py-2"
+            >Testimonials</a
+          >
+          <a
+            href="#get-started"
+            class="nav-link text-gray-700 hover:text-gray-900 py-2"
+            >Get Started</a
+          >
+          <a
+            href="app.html"
+            class="btn-primary mt-4 text-center px-6 py-3 rounded-full font-semibold"
+          >
+            Launch App ✨
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container mx-auto px-6">
+      <section class="text-center py-20 md:py-32 reveal">
+        <div
+          class="inline-block px-4 py-2 glass rounded-full mb-6 reveal delay-1"
+        >
+          <span class="text-sm font-semibold text-gray-700"
+            >🚀 AI-Powered Learning Revolution</span
+          >
+        </div>
+
+        <h2
+          class="text-5xl md:text-7xl font-bold font-display text-gray-900 leading-tight mb-6 reveal delay-2"
+        >
+          Master Any Subject with
+          <span class="gradient-text block mt-2">Personal AI Tutor</span>
+        </h2>
+
+        <p
+          class="mt-6 text-xl text-gray-700 max-w-3xl mx-auto mb-10 reveal delay-3"
+        >
+          Transform your study materials into interactive quizzes. Our AI
+          actively tests your knowledge, adapts to your learning pace, and helps
+          you achieve mastery faster than ever before.
+        </p>
+
+        <div
+          class="flex flex-col sm:flex-row gap-4 justify-center reveal delay-4"
+        >
+          <a
+            href="app.html"
+            class="btn-primary px-10 py-4 rounded-full font-bold text-lg inline-block"
+          >
+            🎯 Start Learning Free
+          </a>
+          <a
+            href="#features"
+            class="glass px-10 py-4 rounded-full font-bold text-lg text-gray-700 hover:bg-white/40 transition inline-block"
+          >
+            See How It Works
+          </a>
+        </div>
+
+        <div
+          class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20 max-w-4xl mx-auto"
+        >
+          <div class="glass rounded-2xl p-6 reveal delay-1">
+            <p class="text-3xl font-bold gradient-text">10K+</p>
+            <p class="text-gray-700 mt-1">Active Learners</p>
+          </div>
+          <div class="glass rounded-2xl p-6 reveal delay-2">
+            <p class="text-3xl font-bold gradient-text">95%</p>
+            <p class="text-gray-700 mt-1">Success Rate</p>
+          </div>
+          <div class="glass rounded-2xl p-6 reveal delay-3">
+            <p class="text-3xl font-bold gradient-text">1M+</p>
+            <p class="text-gray-700 mt-1">Questions Generated</p>
+          </div>
+          <div class="glass rounded-2xl p-6 reveal delay-4">
+            <p class="text-3xl font-bold gradient-text">4.9★</p>
+            <p class="text-gray-700 mt-1">User Rating</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="py-20">
+        <div class="text-center mb-12 reveal">
+          <span
+            class="inline-block px-4 py-2 glass rounded-full text-sm font-semibold text-gray-700 mb-4"
+          >
+            ✨ Powerful Features
+          </span>
+          <h3 class="text-4xl font-bold font-display text-gray-900">
+            Why Choose Dedufy?
+          </h3>
+          <p class="mt-4 text-xl text-gray-700">
+            Experience the future of personalized learning
+          </p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8 mt-12">
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-1"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-emerald-400/20 to-teal-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">🧠</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Smart Questions
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Our AI analyzes your materials and creates perfectly targeted
+              questions that focus on key concepts and understanding.
+            </p>
+          </div>
+
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-2"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-blue-400/20 to-indigo-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">📈</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Adaptive Learning
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Questions automatically adjust to your skill level, keeping you in
+              the optimal learning zone for maximum retention.
+            </p>
+          </div>
+
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-3"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-400/20 to-pink-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">💬</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Instant Feedback
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Get detailed explanations and constructive feedback immediately,
+              turning mistakes into learning opportunities.
+            </p>
+          </div>
+
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-1"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-yellow-400/20 to-orange-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">📊</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Progress Tracking
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Monitor your learning journey with detailed analytics showing
+              strengths, weaknesses, and improvement over time.
+            </p>
+          </div>
+
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-2"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-red-400/20 to-rose-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">📚</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Multi-Format Support
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Upload PDFs, Word docs, presentations, or plain text. Our AI
+              understands and processes all major file formats.
+            </p>
+          </div>
+
+          <div
+            class="feature-card glass rounded-3xl p-8 text-center reveal delay-3"
+          >
+            <div
+              class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-green-400/20 to-lime-400/20 flex items-center justify-center"
+            >
+              <span class="text-4xl">🎯</span>
+            </div>
+            <h4 class="font-bold text-xl text-gray-900 mb-3">
+              Focused Learning
+            </h4>
+            <p class="text-gray-700 leading-relaxed">
+              Target specific topics or chapters. Perfect for exam preparation
+              or mastering challenging concepts.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="py-20">
+        <div class="text-center mb-12 reveal">
+          <span
+            class="inline-block px-4 py-2 glass rounded-full text-sm font-semibold text-gray-700 mb-4"
+          >
+            🎯 Simple Process
+          </span>
+          <h3 class="text-4xl font-bold font-display text-gray-900">
+            How It Works
+          </h3>
+        </div>
+
+        <div class="grid md:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          <div class="text-center reveal delay-1">
+            <div
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-lg"
+            >
+              1
+            </div>
+            <h4 class="font-semibold text-lg mb-2">Upload Material</h4>
+            <p class="text-gray-600 text-sm">
+              Drop your study materials in any format
+            </p>
+          </div>
+          <div class="text-center reveal delay-2">
+            <div
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-lg"
+            >
+              2
+            </div>
+            <h4 class="font-semibold text-lg mb-2">AI Analysis</h4>
+            <p class="text-gray-600 text-sm">
+              Our AI extracts key concepts instantly
+            </p>
+          </div>
+          <div class="text-center reveal delay-3">
+            <div
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-lg"
+            >
+              3
+            </div>
+            <h4 class="font-semibold text-lg mb-2">Interactive Quiz</h4>
+            <p class="text-gray-600 text-sm">
+              Answer personalized questions at your pace
+            </p>
+          </div>
+          <div class="text-center reveal delay-4">
+            <div
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 text-white flex items-center justify-center font-bold text-xl shadow-lg"
+            >
+              4
+            </div>
+            <h4 class="font-semibold text-lg mb-2">Master Subject</h4>
+            <p class="text-gray-600 text-sm">
+              Get feedback and achieve true understanding
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" class="py-20">
+        <div class="text-center mb-12 reveal">
+          <span
+            class="inline-block px-4 py-2 glass rounded-full text-sm font-semibold text-gray-700 mb-4"
+          >
+            💎 Flexible Pricing
+          </span>
+          <h3 class="text-4xl font-bold font-display text-gray-900">
+            Choose Your Plan
+          </h3>
+          <p class="mt-4 text-xl text-gray-700">
+            Start free, upgrade when ready
+          </p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div
+            class="pricing-card glass rounded-3xl p-8 relative reveal delay-1"
+          >
+            <h4 class="font-bold text-2xl text-gray-900 mb-2">Free</h4>
+            <p class="text-gray-600 mb-6">Perfect for trying out</p>
+            <div class="mb-8">
+              <span class="text-5xl font-bold gradient-text">$0</span>
+              <span class="text-gray-600">/month</span>
+            </div>
+            <ul class="space-y-4 mb-8">
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">10 MB file uploads</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">10 questions per session</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Basic AI model</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Community support</span>
+              </li>
+            </ul>
+            <a
+              href="app.html"
+              class="block w-full text-center py-3 rounded-full glass-dark font-semibold text-gray-700 hover:bg-black/10 transition"
+            >
+              Get Started
+            </a>
+          </div>
+
+          <div
+            class="pricing-card glass rounded-3xl p-8 relative transform md:scale-105 shadow-2xl reveal"
+          >
+            <div
+              class="popular-badge absolute -top-4 left-1/2 transform -translate-x-1/2 px-4 py-1 rounded-full text-white text-sm font-bold"
+            >
+              MOST POPULAR
+            </div>
+            <h4 class="font-bold text-2xl text-gray-900 mb-2">Pro</h4>
+            <p class="text-gray-600 mb-6">For serious learners</p>
+            <div class="mb-8">
+              <span class="text-5xl font-bold gradient-text">$19</span>
+              <span class="text-gray-600">/month</span>
+            </div>
+            <ul class="space-y-4 mb-8">
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">50 MB file uploads</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Unlimited questions</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Advanced AI model</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Priority support</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Progress analytics</span>
+              </li>
+            </ul>
+            <a
+              href="app.html"
+              class="block w-full text-center py-3 rounded-full btn-primary font-semibold"
+            >
+              Start Pro Trial
+            </a>
+          </div>
+
+          <div
+            class="pricing-card glass rounded-3xl p-8 relative reveal delay-2"
+          >
+            <h4 class="font-bold text-2xl text-gray-900 mb-2">Business</h4>
+            <p class="text-gray-600 mb-6">For teams & institutions</p>
+            <div class="mb-8">
+              <span class="text-5xl font-bold gradient-text">$49</span>
+              <span class="text-gray-600">/month</span>
+            </div>
+            <ul class="space-y-4 mb-8">
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Everything in Pro</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Unlimited uploads</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Team collaboration</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">Custom branding</span>
+              </li>
+              <li class="flex items-start">
+                <span class="text-green-500 mr-2 mt-1">✓</span>
+                <span class="text-gray-700">API access</span>
+              </li>
+            </ul>
+            <a
+              href="app.html"
+              class="block w-full text-center py-3 rounded-full glass-dark font-semibold text-gray-700 hover:bg-black/10 transition"
+            >
+              Contact Sales
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="testimonials" class="py-20">
+        <div class="text-center mb-12 reveal">
+          <span
+            class="inline-block px-4 py-2 glass rounded-full text-sm font-semibold text-gray-700 mb-4"
+          >
+            💬 Success Stories
+          </span>
+          <h3 class="text-4xl font-bold font-display text-gray-900">
+            What Our Users Say
+          </h3>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div class="glass rounded-3xl p-6 reveal delay-1">
+            <div class="flex items-center mb-4">
+              <div
+                class="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-emerald-400 flex items-center justify-center text-white font-bold"
+              >
+                JD
+              </div>
+              <div class="ml-3">
+                <p class="font-semibold">Jane Doe</p>
+                <p class="text-sm text-gray-600">Medical Student</p>
+              </div>
+            </div>
+            <p class="text-gray-700 italic">
+              "Dedufy transformed my study routine. I went from C's to A's in
+              just one semester!"
+            </p>
+            <div class="mt-4">
+              <span class="text-yellow-500">★★★★★</span>
+            </div>
+          </div>
+
+          <div class="glass rounded-3xl p-6 reveal delay-2">
+            <div class="flex items-center mb-4">
+              <div
+                class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-400 flex items-center justify-center text-white font-bold"
+              >
+                MS
+              </div>
+              <div class="ml-3">
+                <p class="font-semibold">Mark Smith</p>
+                <p class="text-sm text-gray-600">Law Student</p>
+              </div>
+            </div>
+            <p class="text-gray-700 italic">
+              "The adaptive learning feature is incredible. It knows exactly
+              where I need more practice."
+            </p>
+            <div class="mt-4">
+              <span class="text-yellow-500">★★★★★</span>
+            </div>
+          </div>
+
+          <div class="glass rounded-3xl p-6 reveal delay-3">
+            <div class="flex items-center mb-4">
+              <div
+                class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold"
+              >
+                ST
+              </div>
+              <div class="ml-3">
+                <p class="font-semibold">Sarah Taylor</p>
+                <p class="text-sm text-gray-600">Engineering Student</p>
+              </div>
+            </div>
+            <p class="text-gray-700 italic">
+              "Best study tool I've ever used. The instant feedback helps me
+              understand concepts deeply."
+            </p>
+            <div class="mt-4">
+              <span class="text-yellow-500">★★★★★</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="get-started" class="py-20 text-center">
+        <div
+          class="glass rounded-3xl p-10 md:p-16 max-w-4xl mx-auto shadow-xl reveal"
+        >
+          <h3
+            class="text-4xl md:text-5xl font-bold font-display text-gray-900 mb-4"
+          >
+            Ready to Revolutionize Your Learning?
+          </h3>
+          <p class="mt-4 text-xl text-gray-700 max-w-2xl mx-auto mb-10">
+            Join thousands of students achieving academic excellence. Your
+            personal AI tutor is just one click away.
+          </p>
+          <a
+            href="app.html"
+            class="btn-primary px-12 py-5 rounded-full font-bold text-xl inline-block"
+          >
+            🚀 Start Learning for Free
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="text-gray-700 py-10">
+      <div class="container mx-auto px-6 text-center">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+          <div class="flex items-center space-x-2 mb-4 md:mb-0">
+            <span class="text-2xl">🎓</span>
+            <h1 class="text-xl font-bold font-display gradient-text">Dedufy</h1>
+          </div>
+          <nav class="flex space-x-6 font-medium mb-4 md:mb-0">
+            <a href="#features" class="hover:text-gray-900">Features</a>
+            <a href="#pricing" class="hover:text-gray-900">Plans</a>
+            <a href="#testimonials" class="hover:text-gray-900">Testimonials</a>
+          </nav>
+          <div class="flex space-x-4">
+            <a
+              href="#"
+              aria-label="Twitter"
+              class="text-gray-500 hover:text-gray-800 transition"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.71v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84"
+                ></path>
+              </svg>
+            </a>
+            <a
+              href="#"
+              aria-label="LinkedIn"
+              class="text-gray-500 hover:text-gray-800 transition"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </a>
+          </div>
+        </div>
+        <div class="mt-8 border-t border-gray-200/50 pt-8">
+          <p class="text-sm">&copy; 2025 Dedufy. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Mobile Menu Toggle
+        const menuButton = document.getElementById("menu-btn");
+        const mobileMenu = document.getElementById("mobile-menu");
+
+        menuButton.addEventListener("click", () => {
+          mobileMenu.classList.toggle("hidden");
+        });
+
+        // Close menu when a link is clicked
+        const mobileLinks = mobileMenu.querySelectorAll("a");
+        mobileLinks.forEach((link) => {
+          link.addEventListener("click", () => {
+            mobileMenu.classList.add("hidden");
+          });
+        });
+
+        // Scroll Reveal Animation
+        const revealElements = document.querySelectorAll(".reveal");
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("visible");
+                observer.unobserve(entry.target);
+              }
+            });
+          },
+          {
+            threshold: 0.1, // Trigger when 10% of the element is visible
+          }
+        );
+
+        revealElements.forEach((element) => {
+          observer.observe(element);
+        });
+      });
+    </script>
+  </body>
+</html>
