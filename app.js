@@ -2,7 +2,7 @@
 class AIExaminerApp {
   // The constructor initializes the application's state and finds all necessary HTML elements
   constructor() {
-    this.MODEL = "llama-3.1-70b-versatile"; // Latest powerful model
+    this.MODEL = "llama-3.3-70b-versatile"; // Latest powerful model
 
     // 1. Centralized state management (apiKey is no longer needed here)
     this.state = {
@@ -317,3 +317,4 @@ class AIExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new AIExaminerApp();
 });
+
