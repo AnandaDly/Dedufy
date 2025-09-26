@@ -139,12 +139,12 @@
             </div>
           </div>
 
-          <div class="grid md:grid-cols-2 gap-4 mt-6">
+          <div class="grid md:grid-cols-3 gap-4 mt-6">
             <div>
               <label
                 for="difficultySelect"
                 class="block text-gray-700 font-medium mb-2"
-                >2. Difficulty Level</label
+                >2. Difficulty</label
               >
               <select
                 id="difficultySelect"
@@ -155,9 +155,6 @@
                 <option value="hard">Hard</option>
                 <option value="adaptive" selected>Adaptive</option>
               </select>
-              <p class="text-xs text-gray-500 mt-1">
-                Adaptive adjusts to your answers.
-              </p>
             </div>
             <div>
               <label
@@ -173,9 +170,20 @@
                 <option value="friendly" selected>Friendly Tutor</option>
                 <option value="exam">Exam Simulator</option>
               </select>
-              <p class="text-xs text-gray-500 mt-1">
-                Changes the AI's personality.
-              </p>
+            </div>
+            <div>
+              <label
+                for="languageSelect"
+                class="block text-gray-700 font-medium mb-2"
+                >4. Language</label
+              >
+              <select
+                id="languageSelect"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="indonesian" selected>Bahasa Indonesia</option>
+                <option value="english">English</option>
+              </select>
             </div>
           </div>
 
@@ -249,3 +257,4 @@
     <script src="./app.js"></script>
   </body>
 </html>
+
