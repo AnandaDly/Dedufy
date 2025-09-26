@@ -14,6 +14,7 @@ class AIExaminerApp {
       agentMode: "friendly",
       questionsAsked: 0,
       maxQuestions: 10,
+      language: "indonesian",
       file: null,
     };
 
@@ -35,6 +36,7 @@ class AIExaminerApp {
       chatBox: document.getElementById("chatBox"),
       answerInput: document.getElementById("answerInput"),
       sendBtn: document.getElementById("sendBtn"),
+      languageSelect: document.getElementById("languageSelect"),
       restartBtn: document.getElementById("restartBtn"),
       typingIndicator: document.getElementById("typing-indicator"),
     };
@@ -51,7 +53,9 @@ class AIExaminerApp {
     this.sendMessage = this.sendMessage.bind(this);
     this.restartSession = this.restartSession.bind(this);
 
-    this.dom.dropzone.addEventListener("click", () => this.dom.fileInput.click());
+    this.dom.dropzone.addEventListener("click", () =>
+      this.dom.fileInput.click()
+    );
     this.dom.fileInput.addEventListener("change", this.handleFileSelect);
     this.dom.dropzone.addEventListener("dragover", this.handleDragOver);
     this.dom.dropzone.addEventListener("dragleave", this.handleDragLeave);
@@ -59,6 +63,9 @@ class AIExaminerApp {
     this.dom.removeFileBtn.addEventListener("click", this.removeFile);
     this.dom.uploadForm.addEventListener("submit", this.startSession);
     this.dom.sendBtn.addEventListener("click", this.sendMessage);
+    this.dom.languageSelect.addEventListener("change", (e) => {
+      this.state.language = e.target.value;
+    });
     this.dom.restartBtn.addEventListener("click", this.restartSession);
     this.dom.answerInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -84,7 +91,10 @@ class AIExaminerApp {
     messageEl.innerHTML = `
       <div class="${layoutClasses}">
         ${isAI ? avatar : ""}
-        <div class="p-3 ${bubbleClasses}">${content.replace(/\n/g, "<br>")}</div>
+        <div class="p-3 ${bubbleClasses}">${content.replace(
+      /\n/g,
+      "<br>"
+    )}</div>
         ${!isAI ? avatar : ""}
       </div>`;
     this.dom.chatBox.insertBefore(messageEl, this.dom.typingIndicator);
@@ -104,14 +114,25 @@ class AIExaminerApp {
   }
 
   // --- File Handling ---
-  handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add("border-teal-400", "bg-teal-50"); }
-  handleDragLeave(e) { e.preventDefault(); e.currentTarget.classList.remove("border-teal-400", "bg-teal-50"); }
+  handleDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add("border-teal-400", "bg-teal-50");
+  }
+  handleDragLeave(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove("border-teal-400", "bg-teal-50");
+  }
   handleFileDrop(e) {
     e.preventDefault();
-    this.handleDragLeave({ preventDefault: () => {}, currentTarget: this.dom.dropzone });
+    this.handleDragLeave({
+      preventDefault: () => {},
+      currentTarget: this.dom.dropzone,
+    });
     if (e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]);
   }
-  handleFileSelect(e) { if (e.target.files.length) this.handleFile(e.target.files[0]); }
+  handleFileSelect(e) {
+    if (e.target.files.length) this.handleFile(e.target.files[0]);
+  }
   async handleFile(file) {
     this.state.file = file;
     this.dom.fileName.textContent = file.name;
@@ -138,7 +159,8 @@ class AIExaminerApp {
     const ext = file.name.split(".").pop().toLowerCase();
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
-      reader.onerror = () => reject(new DOMException("Problem parsing input file."));
+      reader.onerror = () =>
+        reject(new DOMException("Problem parsing input file."));
       reader.onload = async () => {
         try {
           const buffer = reader.result;
@@ -153,10 +175,19 @@ class AIExaminerApp {
             }
             resolve(text);
           } else if (ext === "docx") {
-            const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+            const result = await mammoth.extractRawText({
+              arrayBuffer: buffer,
+            });
             resolve(result.value);
-          } else reject(new Error("Unsupported file format. Please use .txt, .pdf, or .docx."));
-        } catch (error) { reject(error); }
+          } else
+            reject(
+              new Error(
+                "Unsupported file format. Please use .txt, .pdf, or .docx."
+              )
+            );
+        } catch (error) {
+          reject(error);
+        }
       };
       reader.readAsArrayBuffer(file);
     });
@@ -164,20 +195,44 @@ class AIExaminerApp {
 
   // --- Core API and Session Logic ---
   buildSystemPrompt() {
-    const { difficulty, agentMode, currentLevel } = this.state;
-    const difficultyMap = { easy: "Ask simple questions: basic definitions and facts.", medium: "Ask intermediate questions: brief analysis, connections between concepts.", hard: "Ask difficult questions: in-depth analysis, concept application, critical evaluation." };
-    const agentModeMap = { strict: "You are a strict teacher. Ask tough questions, provide harsh critique, no small talk.", friendly: "You are a friendly tutor. Ask questions with a positive tone, always be encouraging.", exam: "You are an exam simulator. Ask questions one by one WITHOUT feedback. Keep score for a final summary." };
+    const { difficulty, agentMode, currentLevel, language } = this.state;
+
+    // Tentukan instruksi bahasa berdasarkan state
+    const languageInstruction =
+      language === "indonesian"
+        ? "Gunakan HANYA Bahasa Indonesia untuk semua pertanyaan dan feedback."
+        : "Use ONLY English for all questions and feedback.";
+
+    const difficultyMap = {
+      easy: "Ask simple questions: basic definitions and facts.",
+      medium:
+        "Ask intermediate questions: brief analysis, connections between concepts.",
+      hard: "Ask difficult questions: in-depth analysis, concept application, critical evaluation.",
+    };
+    const agentModeMap = {
+      strict:
+        "You are a strict teacher. Ask tough questions, provide harsh critique, no small talk.",
+      friendly:
+        "You are a friendly tutor. Ask questions with a positive tone, always be encouraging.",
+      exam: "You are an exam simulator. Ask questions one by one WITHOUT feedback. Keep score for a final summary.",
+    };
+
     return `You are AI Examiner. Your task is to test a user's understanding of the provided material.
-    === STRICT RULES ===
-    1. DO NOT answer your own questions.
-    2. Always ask only ONE question at a time.
-    3. Your entire output MUST be a valid JSON object without any markdown formatting: {"feedback": "...", "next_question": "...", "score": 0-100}
-    4. Feedback should be max 2 sentences. If in 'exam' mode, feedback MUST be an empty string ("").
-    5. 'score' is your assessment of the user's last answer (0-100). For the first question, the score must be 0.
-    === DIFFICULTY ===
-    ${difficulty === 'adaptive' ? difficultyMap[currentLevel] : difficultyMap[difficulty]}
-    === MODE ===
-    ${agentModeMap[agentMode]}`;
+  === STRICT RULES ===
+  1. DO NOT answer your own questions.
+  2. Always ask only ONE question at a time.
+  3. ${languageInstruction} 
+  4. Your entire output MUST be a valid JSON object without any markdown formatting: {"feedback": "...", "next_question": "...", "score": 0-100}
+  5. Feedback should be max 2 sentences. If in 'exam' mode, feedback MUST be an empty string ("").
+  6. 'score' is your assessment of the user's last answer (0-100). For the first question, the score must be 0.
+  === DIFFICULTY ===
+  ${
+    difficulty === "adaptive"
+      ? difficultyMap[currentLevel]
+      : difficultyMap[difficulty]
+  }
+  === MODE ===
+  ${agentModeMap[agentMode]}`;
   }
 
   // ✅ *** THIS IS THE KEY CHANGE *** ✅
@@ -191,7 +246,12 @@ class AIExaminerApp {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        return { error: { message: errorData.error?.message || `HTTP Error: ${response.status}` } };
+        return {
+          error: {
+            message:
+              errorData.error?.message || `HTTP Error: ${response.status}`,
+          },
+        };
       }
       return await response.json();
     } catch (err) {
@@ -201,19 +261,24 @@ class AIExaminerApp {
 
   async getAIResponse(messages) {
     const payload = {
-        model: this.MODEL,
-        messages,
-        temperature: 0.6,
-        response_format: { type: "json_object" },
+      model: this.MODEL,
+      messages,
+      temperature: 0.6,
+      response_format: { type: "json_object" },
     };
     const data = await this.callGroq(payload);
     if (data.error) {
-      return { feedback: "", next_question: `⚠️ Error: ${data.error.message}`, score: 0 };
+      return {
+        feedback: "",
+        next_question: `⚠️ Error: ${data.error.message}`,
+        score: 0,
+      };
     }
     const rawContent = data.choices?.[0]?.message?.content || "{}";
     try {
       const parsed = JSON.parse(rawContent);
-      if (!parsed.next_question) throw new Error("Missing 'next_question' in AI response.");
+      if (!parsed.next_question)
+        throw new Error("Missing 'next_question' in AI response.");
       return parsed;
     } catch (e) {
       console.warn("Non-JSON response from AI, using fallback:", rawContent);
@@ -223,10 +288,14 @@ class AIExaminerApp {
 
   adaptDifficulty(score) {
     if (this.state.difficulty !== "adaptive") return;
-    if (score > 80 && this.state.currentLevel === "easy") this.state.currentLevel = "medium";
-    else if (score > 80 && this.state.currentLevel === "medium") this.state.currentLevel = "hard";
-    else if (score < 40 && this.state.currentLevel === "hard") this.state.currentLevel = "medium";
-    else if (score < 40 && this.state.currentLevel === "medium") this.state.currentLevel = "easy";
+    if (score > 80 && this.state.currentLevel === "easy")
+      this.state.currentLevel = "medium";
+    else if (score > 80 && this.state.currentLevel === "medium")
+      this.state.currentLevel = "hard";
+    else if (score < 40 && this.state.currentLevel === "hard")
+      this.state.currentLevel = "medium";
+    else if (score < 40 && this.state.currentLevel === "medium")
+      this.state.currentLevel = "easy";
   }
 
   // --- Main Event Handlers ---
@@ -239,11 +308,19 @@ class AIExaminerApp {
     this.state.sessionActive = true;
     this.state.difficulty = this.dom.difficultySelect.value;
     this.state.agentMode = this.dom.agentModeSelect.value;
-    this.state.currentLevel = this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
+    this.state.language = this.dom.languageSelect.value;
+    this.state.currentLevel =
+      this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
     this.dom.materialSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.remove("hidden");
 
-    const messages = [{ role: "system", content: this.buildSystemPrompt() }, { role: "user", content: `Material:\n---\n${this.state.sessionContext}\n---\n\nPlease ask me the first question.` }];
+    const messages = [
+      { role: "system", content: this.buildSystemPrompt() },
+      {
+        role: "user",
+        content: `Material:\n---\n${this.state.sessionContext}\n---\n\nPlease ask me the first question.`,
+      },
+    ];
     const aiResult = await this.getAIResponse(messages);
 
     this.dom.loadingSpinner.classList.add("hidden");
@@ -253,10 +330,16 @@ class AIExaminerApp {
 
     if (aiResult.next_question) {
       this.renderMessage("ai", aiResult.next_question);
-      this.state.chatHistory.push({ role: "assistant", content: JSON.stringify(aiResult) });
+      this.state.chatHistory.push({
+        role: "assistant",
+        content: JSON.stringify(aiResult),
+      });
       this.state.questionsAsked++;
     } else {
-      this.renderMessage("ai", "I'm sorry, I couldn't generate a question. Please try again.");
+      this.renderMessage(
+        "ai",
+        "I'm sorry, I couldn't generate a question. Please try again."
+      );
     }
   }
 
@@ -279,7 +362,14 @@ class AIExaminerApp {
       return;
     }
 
-    const messages = [{ role: "system", content: this.buildSystemPrompt() }, { role: "user", content: `Material:\n---\n${this.state.sessionContext}\n---` }, ...this.state.chatHistory];
+    const messages = [
+      { role: "system", content: this.buildSystemPrompt() },
+      {
+        role: "user",
+        content: `Material:\n---\n${this.state.sessionContext}\n---`,
+      },
+      ...this.state.chatHistory,
+    ];
     const aiResult = await this.getAIResponse(messages);
     this.adaptDifficulty(aiResult.score);
 
@@ -288,19 +378,35 @@ class AIExaminerApp {
     }
     if (aiResult.next_question) {
       this.renderMessage("ai", aiResult.next_question);
-      this.state.chatHistory.push({ role: "assistant", content: JSON.stringify(aiResult) });
+      this.state.chatHistory.push({
+        role: "assistant",
+        content: JSON.stringify(aiResult),
+      });
       this.state.questionsAsked++;
     } else {
-      this.renderMessage("ai", "Sorry, I encountered an issue. Please try restarting the session.");
+      this.renderMessage(
+        "ai",
+        "Sorry, I encountered an issue. Please try restarting the session."
+      );
       this.state.sessionActive = false;
     }
     this.showTypingIndicator(false);
     this.setInputDisabled(false);
     this.dom.answerInput.focus();
   }
-  
+
   restartSession() {
-    this.state = { ...this.state, sessionContext: "", chatHistory: [], sessionActive: false, difficulty: "adaptive", currentLevel: "medium", agentMode: "friendly", questionsAsked: 0, file: null };
+    this.state = {
+      ...this.state,
+      sessionContext: "",
+      chatHistory: [],
+      sessionActive: false,
+      difficulty: "adaptive",
+      currentLevel: "medium",
+      agentMode: "friendly",
+      questionsAsked: 0,
+      file: null,
+    };
     this.dom.chatBox.innerHTML = "";
     this.dom.chatBox.appendChild(this.dom.typingIndicator);
     this.removeFile();
@@ -309,6 +415,7 @@ class AIExaminerApp {
     this.dom.loadingSpinner.classList.add("hidden");
     this.dom.difficultySelect.value = "adaptive";
     this.dom.agentModeSelect.value = "friendly";
+    this.dom.languageSelect.value = "indonesian";
     this.setInputDisabled(false);
   }
 }
@@ -317,4 +424,3 @@ class AIExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new AIExaminerApp();
 });
-
