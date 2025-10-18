@@ -353,7 +353,16 @@ class ThesisExaminerApp {
       this.dom.chatSection.classList.remove("hidden");
       this.setInputDisabled(false);
       this.renderMessage("ai", "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama.");
-      
+      const firstQuestionPrompt = this.buildExaminerPrompt();
+      const aiResult = await this.callGroqWithRetry({model: this.POWERFUL_MODEL, messages: [{role: "user", content: firstQuestionPrompt}], response_format: { type: "json_object" } });
+      if(aiResult.error) throw new Error(aiResult.error.message);
+      const firstQuestion = this.safeJsonParse(aiResult.choices?.[0]?.message?.content);
+
+      if (firstQuestion?.next_question) {
+          this.renderMessage("ai", firstQuestion.next_question);
+          this.state.chatHistory.push({ role: 'assistant', content: JSON.stringify(firstQuestion) });
+          this.state.questionsAsked++;
+      }
       // Simpan sesi setelah analisis berhasil
       this.saveSessionToStorage();
     } catch (error) {
