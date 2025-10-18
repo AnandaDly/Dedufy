@@ -5,13 +5,14 @@ class ThesisExaminerApp {
     this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
     this.MAX_FILE_SIZE_MB = 5;
     this.MAX_CACHE_SIZE = 50;
-    // --- PERBAIKAN #6: Tambahkan batas maksimal untuk riwayat chat ---
     this.MAX_HISTORY_LENGTH = 50;
     this.SESSION_STORAGE_KEY = "thesisExaminerSession";
 
     // --- Manajemen State ---
     this.state = {
-      sessionId: null, // ID unik untuk setiap sesi file
+      sessionId: null,
+      // --- PERBAIKAN #11: Tambahkan fileHash ke state ---
+      fileHash: null, 
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
@@ -22,7 +23,7 @@ class ThesisExaminerApp {
       currentLevel: "medium",
       agentMode: "friendly",
       language: "indonesian",
-      scoreHistory: [], // Untuk adaptasi kesulitan berbasis tren
+      scoreHistory: [],
       // Artefak analisis
       structureMap: null,
       textChunks: [],
@@ -30,7 +31,6 @@ class ThesisExaminerApp {
       conceptGraph: null,
       strategicWeaknesses: null,
       hybridIndex: {},
-      // --- PERBAIKAN #5: Map tetap digunakan, logika LRU diimplementasikan saat akses ---
       queryCache: new Map(),
     };
 
@@ -94,10 +94,24 @@ class ThesisExaminerApp {
     this.loadSessionFromStorage();
   }
 
+  // --- PERBAIKAN #11: Fungsi helper untuk menghitung hash SHA-256 ---
+  async calculateHash(text) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (error) {
+      console.error("Gagal menghitung hash:", error);
+      // Fallback ke nilai non-kriptografis jika Web Crypto API gagal (misal, di konteks non-aman)
+      return `fallback-${text.length}-${text.substring(0, 100)}`;
+    }
+  }
+
   saveSessionToStorage() {
     try {
       const stateToSave = { ...this.state, sessionContext: "" };
-      // Ubah Map menjadi array untuk serialisasi JSON
       stateToSave.queryCache = Array.from(this.state.queryCache.entries());
       localStorage.setItem(
         this.SESSION_STORAGE_KEY,
@@ -114,7 +128,6 @@ class ThesisExaminerApp {
       if (savedStateJSON) {
         const savedState = JSON.parse(savedStateJSON);
         
-        // Ubah array cache kembali menjadi Map
         if (Array.isArray(savedState.queryCache)) {
             savedState.queryCache = new Map(savedState.queryCache);
         } else {
@@ -183,7 +196,7 @@ class ThesisExaminerApp {
     this.dom.chatBox.insertBefore(messageEl, this.dom.typingIndicator);
     this.dom.chatBox.scrollTop = this.dom.chatBox.scrollHeight;
   }
-
+  
   showTypingIndicator(show) {
     this.dom.typingIndicator.classList.toggle("hidden", !show);
     if (show) this.dom.chatBox.scrollTop = this.dom.chatBox.scrollHeight;
@@ -194,20 +207,11 @@ class ThesisExaminerApp {
     this.dom.sendBtn.classList.toggle("opacity-50", disabled);
     this.dom.sendBtn.classList.toggle("cursor-not-allowed", disabled);
   }
-  handleDragOver(e) {
-    e.preventDefault();
-    e.currentTarget.classList.add("border-teal-400", "bg-teal-50");
-  }
-  handleDragLeave(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove("border-teal-400", "bg-teal-50");
-  }
+  handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add("border-teal-400", "bg-teal-50"); }
+  handleDragLeave(e) { e.preventDefault(); e.currentTarget.classList.remove("border-teal-400", "bg-teal-50"); }
   handleFileDrop(e) {
     e.preventDefault();
-    this.handleDragLeave({
-      preventDefault: () => {},
-      currentTarget: this.dom.dropzone,
-    });
+    this.handleDragLeave({ preventDefault: () => {}, currentTarget: this.dom.dropzone, });
     if (e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]);
   }
   handleFileSelect(e) {
@@ -216,20 +220,32 @@ class ThesisExaminerApp {
 
   async handleFile(file) {
     if (file.size > this.MAX_FILE_SIZE_MB * 1024 * 1024) {
-      this.renderMessage(
-        "ai",
-        `❌ **Error:** Ukuran file melebihi batas ${this.MAX_FILE_SIZE_MB} MB.`
-      );
+      this.renderMessage("ai", `❌ **Error:** Ukuran file melebihi batas ${this.MAX_FILE_SIZE_MB} MB.`);
       this.dom.fileInput.value = "";
       return;
     }
+    
+    try {
+        this.state.sessionContext = await this.readFileContent(file);
+    } catch (err) {
+        this.renderMessage("ai", `❌ Error membaca file: ${err.message}`);
+        this.removeFile();
+        return;
+    }
 
-    if (this.state.sessionActive && this.state.sessionId) {
-      this.renderMessage("ai", "File diterima. Melanjutkan sesi...");
+    // --- PERBAIKAN #11: Verifikasi hash file saat memulihkan sesi ---
+    if (this.state.sessionActive && this.state.fileHash) {
+      const newHash = await this.calculateHash(this.state.sessionContext);
+      if (newHash !== this.state.fileHash) {
+        this.renderMessage("ai", "❌ **Error:** File yang Anda unggah berbeda dari sesi yang disimpan. Silakan unggah file yang benar atau mulai ulang sesi.");
+        this.state.sessionContext = ""; // Kosongkan konteks agar tidak bisa dilanjutkan
+        this.dom.fileInput.value = "";
+        return;
+      }
+      this.renderMessage("ai", "✅ File terverifikasi. Melanjutkan sesi...");
       this.setInputDisabled(false);
     } else {
       this.restartSession(false);
-      // --- PERBAIKAN #7: Gunakan crypto.randomUUID() untuk ID sesi yang unik secara global ---
       this.state.sessionId = crypto.randomUUID();
     }
 
@@ -239,12 +255,6 @@ class ThesisExaminerApp {
     this.dom.filePreview.classList.remove("hidden");
     this.dom.dropzone.classList.add("hidden");
     this.dom.startBtn.disabled = false;
-    try {
-      this.state.sessionContext = await this.readFileContent(file);
-    } catch (err) {
-      this.renderMessage("ai", `❌ Error membaca file: ${err.message}`);
-      this.removeFile();
-    }
   }
 
   removeFile() {
@@ -256,12 +266,12 @@ class ThesisExaminerApp {
     this.dom.startBtn.disabled = true;
     this.restartSession();
   }
+  
   readFileContent(file) {
     const ext = file.name.split(".").pop().toLowerCase();
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
-      reader.onerror = () =>
-        reject(new DOMException("Problem parsing input file."));
+      reader.onerror = () => reject(new DOMException("Problem parsing input file."));
       reader.onload = async () => {
         try {
           const buffer = reader.result;
@@ -273,20 +283,12 @@ class ThesisExaminerApp {
               const page = await pdf.getPage(i);
               const content = await page.getTextContent();
               text += content.items.map((item) => item.str).join(" ") + "\n\n";
-            }
-            resolve(text);
+            } resolve(text);
           } else if (ext === "docx") {
-            const result = await mammoth.extractRawText({
-              arrayBuffer: buffer,
-            });
+            const result = await mammoth.extractRawText({ arrayBuffer: buffer });
             resolve(result.value);
-          } else
-            reject(
-              new Error("Unsupported format. Please use .txt, .pdf, or .docx.")
-            );
-        } catch (error) {
-          reject(error);
-        }
+          } else reject(new Error("Unsupported format. Please use .txt, .pdf, or .docx."));
+        } catch (error) { reject(error); }
       };
       reader.readAsArrayBuffer(file);
     });
@@ -297,150 +299,73 @@ class ThesisExaminerApp {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        const responsePromise = fetch("/api/groq-proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
+        const response = await fetch("/api/groq-proxy", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload), signal: controller.signal,
         });
-
-        const response = await responsePromise;
         clearTimeout(timeoutId);
-
         if (!response.ok) {
           const errorData = await response.json();
-          if (response.status >= 400 && response.status < 500) {
-            return {
-              error: {
-                message:
-                  errorData.error?.message || `Error: ${response.status}`,
-              },
-            };
-          }
+          if (response.status >= 400 && response.status < 500) return { error: { message: errorData.error?.message || `Error: ${response.status}` } };
           throw new Error(`HTTP Error: ${response.status}`);
         }
         return await response.json();
       } catch (err) {
         if (err.name === 'AbortError') {
-          console.warn(`Percobaan API gagal karena timeout (${timeout / 1000} detik).`);
-          if (i === retries - 1) {
-            return {
-              error: {
-                message: `Permintaan gagal karena timeout setelah ${retries} kali percobaan.`,
-              },
-            };
-          }
+          if (i === retries - 1) return { error: { message: `Permintaan gagal karena timeout setelah ${retries} kali percobaan.` } };
         } else if (i === retries - 1) {
-            return {
-              error: {
-                message: `Gagal setelah ${retries} kali percobaan: ${err.message}`,
-              },
-            };
+            return { error: { message: `Gagal setelah ${retries} kali percobaan: ${err.message}` } };
         }
-        
-        console.warn(
-          `Percobaan API gagal (${i + 1}/${retries}). Mencoba lagi dalam ${
-            delay / 1000
-          } detik...`
-        );
-        await new Promise((res) => setTimeout(res, delay));
-        delay *= 2;
+        await new Promise((res) => setTimeout(res, delay)); delay *= 2;
       }
     }
   }
 
   safeJsonParse(jsonString) {
-    try {
-      return JSON.parse(jsonString);
-    } catch (e) {
-      console.error("Gagal mem-parsing JSON:", jsonString, e);
-      return null;
-    }
+    try { return JSON.parse(jsonString); }
+    catch (e) { console.error("Gagal mem-parsing JSON:", jsonString, e); return null; }
   }
 
   async semanticChunking(textSample) {
     const prompt = `Your task is to act as a document structure analyzer. Read the provided text and identify the main semantic sections or chapters.
     Return a valid JSON object with a single key "chapters", which is an array of objects. Each object should have a "number" and a "title".
-    Example: {"chapters": [{"number": 1, "title": "Introduction"}, {"number": 2, "title": "Literature Review"}]}.
     If you cannot identify clear chapters, return an empty array.`;
-
     const data = await this.callGroqWithRetry({
       model: this.FAST_MODEL,
-      messages: [
-        {
-          role: "user",
-          content: prompt + `\n\nTEXT TO ANALYZE:\n---\n${textSample}`,
-        },
-      ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt + `\n\nTEXT TO ANALYZE:\n---\n${textSample}` }],
+      temperature: 0.1, response_format: { type: "json_object" },
     });
-    if (data.error)
-      throw new Error(`Gagal menganalisis struktur: ${data.error.message}`);
-
+    if (data.error) throw new Error(`Gagal menganalisis struktur: ${data.error.message}`);
     const content = this.safeJsonParse(data.choices?.[0]?.message?.content);
     if (!content || !Array.isArray(content.chapters)) {
-      console.warn(
-        "Semantic chunking gagal, menggunakan fallback dokumen penuh."
-      );
       return { chapters: [] };
     }
     return content;
   }
 
   smartChunking(fullText, structure) {
+    if (!structure.chapters || structure.chapters.length === 0) return [{ number: 1, title: "Full Document", content: fullText }];
     const chunks = [];
-    if (!structure.chapters || structure.chapters.length === 0) {
-      return [{ number: 1, title: "Full Document", content: fullText }];
+    const toRoman = (num) => {
+        const roman = {M:1000,CM:900,D:500,CD:400,C:100,XC:90,L:50,XL:40,X:10,IX:9,V:5,IV:4,I:1};
+        let str = ''; for (let i of Object.keys(roman)) { let q = Math.floor(num / roman[i]); num -= q * roman[i]; str += i.repeat(q); } return str;
     }
     for (let i = 0; i < structure.chapters.length; i++) {
       const chapter = structure.chapters[i];
       if (!chapter || typeof chapter.number === "undefined") continue;
-
       const nextChapter = structure.chapters[i + 1];
-      // --- PERBAIKAN #8: Regex dibuat lebih fleksibel untuk menangani format judul yang berbeda ---
-      // Mencari 'BAB', 'CHAPTER', 'BAGIAN' diikuti oleh angka Arab atau Romawi.
-      const pattern = new RegExp(
-        `(BAB|CHAPTER|BAGIAN)\\s+(?:${chapter.number}|${toRoman(chapter.number)})[\\s\\.\\n]`,
-        "i"
-      );
+      const pattern = new RegExp(`(BAB|CHAPTER|BAGIAN)\\s+(?:${chapter.number}|${toRoman(chapter.number)})[\\s\\.\\n]`, "i");
       const match = fullText.match(pattern);
-
       if (!match) continue;
-
       const startIndex = match.index;
       let endIndex = fullText.length;
       if (nextChapter && typeof nextChapter.number !== "undefined") {
-        const nextPattern = new RegExp(
-           `(BAB|CHAPTER|BAGIAN)\\s+(?:${nextChapter.number}|${toRoman(nextChapter.number)})[\\s\\.\\n]`,
-          "i"
-        );
-        const nextMatch = fullText
-          .substring(startIndex + match[0].length)
-          .match(nextPattern);
-        if (nextMatch) {
-          endIndex = startIndex + match[0].length + nextMatch.index;
-        }
+        const nextPattern = new RegExp(`(BAB|CHAPTER|BAGIAN)\\s+(?:${nextChapter.number}|${toRoman(nextChapter.number)})[\\s\\.\\n]`, "i");
+        const nextMatch = fullText.substring(startIndex + match[0].length).match(nextPattern);
+        if (nextMatch) endIndex = startIndex + match[0].length + nextMatch.index;
       }
-      chunks.push({
-        number: chapter.number,
-        title: chapter.title || `Chapter ${chapter.number}`,
-        content: fullText.substring(startIndex, endIndex),
-      });
+      chunks.push({ number: chapter.number, title: chapter.title || `Chapter ${chapter.number}`, content: fullText.substring(startIndex, endIndex) });
     }
-    // Tambahkan helper function untuk konversi ke angka romawi jika diperlukan
-    function toRoman(num) {
-        const roman = {M:1000,CM:900,D:500,CD:400,C:100,XC:90,L:50,XL:40,X:10,IX:9,V:5,IV:4,I:1};
-        let str = '';
-        for (let i of Object.keys(roman)) {
-            let q = Math.floor(num / roman[i]);
-            num -= q * roman[i];
-            str += i.repeat(q);
-        }
-        return str;
-    }
-
     return chunks;
   }
 
@@ -450,55 +375,47 @@ class ThesisExaminerApp {
       return this.callGroqWithRetry({
         model: this.POWERFUL_MODEL,
         messages: [
-          {
-            role: "system",
-            content: `You are analyzing Chapter ${chunk.number}: ${chunk.title}.`,
-          },
-          {
-            role: "user",
-            // --- PERBAIKAN #3: Hapus .substring() untuk mengirim seluruh konten bab ---
-            content: `CONTENT:\n---\n${chunk.content}\n---\nINSTRUCTIONS:\n${perChapterPrompt}`,
-          },
+          { role: "system", content: `You are analyzing Chapter ${chunk.number}: ${chunk.title}.` },
+          { role: "user", content: `CONTENT:\n---\n${chunk.content}\n---\nINSTRUCTIONS:\n${perChapterPrompt}` },
         ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
+        temperature: 0.3, response_format: { type: "json_object" },
       });
     });
-    const results = await Promise.all(analysisPromises);
-    return results.map((res, index) => {
-      if (res.error)
-        throw new Error(
-          `Analisis bab ${chunks[index].number} gagal: ${res.error.message}`
-        );
-      const analysis = this.safeJsonParse(res.choices?.[0]?.message?.content);
-      if (!analysis)
-        throw new Error(
-          `Respons analisis tidak valid untuk bab ${chunks[index].number}.`
-        );
-      return {
-        chapter: chunks[index].number,
-        title: chunks[index].title,
-        analysis: analysis,
-      };
+    // --- PERBAIKAN #10: Ganti Promise.all dengan Promise.allSettled ---
+    const results = await Promise.allSettled(analysisPromises);
+    const successfulAnalyses = [];
+    results.forEach((res, index) => {
+        if (res.status === 'fulfilled') {
+            const apiResponse = res.value;
+            if (apiResponse.error) {
+                console.error(`Analisis bab ${chunks[index].number} gagal (API Error): ${apiResponse.error.message}`);
+                this.renderMessage("ai", `⚠️ Gagal menganalisis Bab ${chunks[index].number}. Sesi akan dilanjutkan dengan informasi yang tidak lengkap.`);
+                return;
+            }
+            const analysis = this.safeJsonParse(apiResponse.choices?.[0]?.message?.content);
+            if (!analysis) {
+                 console.error(`Respons analisis tidak valid untuk bab ${chunks[index].number}.`);
+                 this.renderMessage("ai", `⚠️ Respons tidak valid untuk Bab ${chunks[index].number}. Sesi akan dilanjutkan dengan informasi yang tidak lengkap.`);
+                 return;
+            }
+            successfulAnalyses.push({ chapter: chunks[index].number, title: chunks[index].title, analysis: analysis });
+        } else {
+            console.error(`Analisis bab ${chunks[index].number} gagal (Promise Rejected): ${res.reason}`);
+            this.renderMessage("ai", `⚠️ Gagal total memproses Bab ${chunks[index].number}. Sesi akan dilanjutkan dengan informasi yang tidak lengkap.`);
+        }
     });
+    return successfulAnalyses;
   }
 
   async synthesizeAndStrategize(chapterAnalyses) {
+    if(chapterAnalyses.length === 0) {
+        throw new Error("Tidak ada bab yang berhasil dianalisis. Tidak dapat melanjutkan.");
+    }
     const prompt = `TASK 1: SYNTHESIS: Build a concept graph, identify cross-chapter themes. TASK 2: STRATEGY: Identify methodological gaps, weak evidence, and alternative perspectives. Return a single valid JSON object with keys "conceptGraph" and "strategicWeaknesses".`;
     const data = await this.callGroqWithRetry({
       model: this.POWERFUL_MODEL,
-      messages: [
-        {
-          role: "user",
-          content: `ANALYSES: --- ${JSON.stringify(
-            chapterAnalyses,
-            null,
-            2
-          )} --- ${prompt}`,
-        },
-      ],
-      temperature: 0.4,
-      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: `ANALYSES: --- ${JSON.stringify(chapterAnalyses, null, 2)} --- ${prompt}` }],
+      temperature: 0.4, response_format: { type: "json_object" },
     });
     if (data.error) throw new Error(`Gagal sintesis: ${data.error.message}`);
     const content = this.safeJsonParse(data.choices?.[0]?.message?.content);
@@ -509,15 +426,12 @@ class ThesisExaminerApp {
   buildHybridIndex(chapterAnalyses) {
     const index = { keywordSearch: new Map() };
     if (!Array.isArray(chapterAnalyses)) return index;
-
     chapterAnalyses.forEach((item) => {
       if (!item?.analysis) return;
       const concepts = item.analysis.key_concepts;
       if (Array.isArray(concepts)) {
         concepts.forEach((concept) => {
-          const term = (
-            typeof concept === "string" ? concept : concept?.term
-          )?.toLowerCase();
+          const term = (typeof concept === "string" ? concept : concept?.term)?.toLowerCase();
           if (term) index.keywordSearch.set(term, item.chapter);
         });
       }
@@ -528,63 +442,36 @@ class ThesisExaminerApp {
   async startSession(e) {
     e.preventDefault();
     if (!this.state.sessionContext) {
-      alert("Silakan unggah file materi terlebih dahulu!");
-      return;
+      alert("Silakan unggah file materi terlebih dahulu!"); return;
     }
-
     this.state.difficulty = this.dom.difficultySelect.value;
     this.state.agentMode = this.dom.agentModeSelect.value;
     this.state.language = this.dom.languageSelect.value;
-    this.state.currentLevel =
-      this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
-
+    this.state.currentLevel = this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
     this.state.sessionActive = true;
     this.dom.materialSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.remove("hidden");
 
     try {
+      // --- PERBAIKAN #11: Hitung dan simpan hash saat sesi dimulai ---
+      this.state.fileHash = await this.calculateHash(this.state.sessionContext);
+
       this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
-      this.state.structureMap = await this.semanticChunking(
-        this.state.sessionContext.substring(0, 10000)
-      );
-      this.renderMessage(
-        "ai",
-        `Struktur ditemukan (${
-          this.state.structureMap?.chapters?.length || 0
-        } bab). Memotong teks... [Langkah 2/5]`
-      );
-      this.state.textChunks = this.smartChunking(
-        this.state.sessionContext,
-        this.state.structureMap
-      );
-      this.renderMessage(
-        "ai",
-        `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`
-      );
-      this.state.chapterAnalyses = await this.parallelDeepDive(
-        this.state.textChunks
-      );
-      this.renderMessage(
-        "ai",
-        "Analisis bab selesai. Mensintesis & menyusun strategi... [Langkah 4/5]"
-      );
-      const combinedAnalysis = await this.synthesizeAndStrategize(
-        this.state.chapterAnalyses
-      );
+      this.state.structureMap = await this.semanticChunking(this.state.sessionContext.substring(0, 10000));
+      this.renderMessage("ai", `Struktur ditemukan (${this.state.structureMap?.chapters?.length || 0} bab). Memotong teks... [Langkah 2/5]`);
+      this.state.textChunks = this.smartChunking(this.state.sessionContext, this.state.structureMap);
+      this.renderMessage("ai", `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`);
+      this.state.chapterAnalyses = await this.parallelDeepDive(this.state.textChunks);
+      this.renderMessage("ai", "Analisis bab selesai. Mensintesis & menyusun strategi... [Langkah 4/5]");
+      const combinedAnalysis = await this.synthesizeAndStrategize(this.state.chapterAnalyses);
       this.state.conceptGraph = combinedAnalysis.conceptGraph;
       this.state.strategicWeaknesses = combinedAnalysis.strategicWeaknesses;
       this.renderMessage("ai", "Membangun indeks pencarian... [Langkah 5/5]");
-      this.state.hybridIndex = this.buildHybridIndex(
-        this.state.chapterAnalyses
-      );
-
+      this.state.hybridIndex = this.buildHybridIndex(this.state.chapterAnalyses);
       this.dom.loadingSpinner.classList.add("hidden");
       this.dom.chatSection.classList.remove("hidden");
       this.setInputDisabled(false);
-      this.renderMessage(
-        "ai",
-        "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama."
-      );
+      this.renderMessage("ai", "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama.");
       const firstQuestionPrompt = this.buildExaminerPrompt();
       const aiResult = await this.callGroqWithRetry({
         model: this.POWERFUL_MODEL,
@@ -592,60 +479,41 @@ class ThesisExaminerApp {
         response_format: { type: "json_object" },
       });
       if (aiResult.error) throw new Error(aiResult.error.message);
-      const firstQuestion = this.safeJsonParse(
-        aiResult.choices?.[0]?.message?.content
-      );
-
+      const firstQuestion = this.safeJsonParse(aiResult.choices?.[0]?.message?.content);
       if (firstQuestion?.next_question) {
         this.renderMessage("ai", firstQuestion.next_question);
-        
         const assistantMessage = { role: "assistant", content: JSON.stringify(firstQuestion) };
         this.state.chatHistory.push(assistantMessage);
-        // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
-        if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-            this.state.chatHistory.shift();
-        }
-
+        if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) this.state.chatHistory.shift();
         this.state.questionsAsked++;
       }
       this.saveSessionToStorage();
     } catch (error) {
       console.error("Setup Phase Failed:", error);
-      this.renderMessage(
-        "ai",
-        `❌ **Error Fatal:** ${error.message}. Sesi tidak dapat dimulai. Silakan mulai ulang.`
-      );
-      this.dom.loadingSpinner.classList.add("hidden");
-      this.setInputDisabled(true);
+      this.renderMessage("ai", `❌ **Error Fatal:** ${error.message}. Sesi tidak dapat dimulai. Silakan mulai ulang.`);
+      this.dom.loadingSpinner.classList.add("hidden"); this.setInputDisabled(true);
     }
   }
 
   async retrieveContent(query) {
     const cacheKey = query.toLowerCase();
-    // --- PERBAIKAN #5: Implementasi logika LRU pada cache hit ---
     if (this.state.queryCache.has(cacheKey)) {
       const value = this.state.queryCache.get(cacheKey);
-      // Hapus dan set ulang untuk memindahkannya ke akhir (menjadi yang terbaru)
       this.state.queryCache.delete(cacheKey);
       this.state.queryCache.set(cacheKey, value);
       return value;
     }
-
     const queryWords = query.toLowerCase().split(/\s+/);
     for (const word of queryWords) {
       if (this.state.hybridIndex.keywordSearch.has(word)) {
         const chapterNum = this.state.hybridIndex.keywordSearch.get(word);
-        const analysis = this.state.chapterAnalyses.find(
-          (c) => c.chapter === chapterNum
-        );
+        const analysis = this.state.chapterAnalyses.find((c) => c.chapter === chapterNum);
+        // --- PERBAIKAN #9: Pastikan format content selalu array ---
         const result = {
           source: `ch${chapterNum}`,
-          content: analysis,
+          content: analysis ? [analysis] : [], // Selalu bungkus dalam array
           type: "Index Hit",
         };
-
-        // --- PERBAIKAN #5: Implementasi logika penggusuran LRU/FIFO ---
-        // Dengan Map, key pertama adalah yang paling lama dimasukkan (atau diakses)
         if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
           const oldestKey = this.state.queryCache.keys().next().value;
           this.state.queryCache.delete(oldestKey);
@@ -654,43 +522,18 @@ class ThesisExaminerApp {
         return result;
       }
     }
-
-    console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
-    const prompt = `You are a semantic router. Your task is to find the most relevant chapters to answer the user's query based on the document's structure.
-      Return a valid JSON object with a single key "relevant_chapters", which is an array of chapter numbers.
-      Example: {"relevant_chapters": [2, 4]}.`;
-
+    const prompt = `You are a semantic router. Your task is to find the most relevant chapters to answer the user's query...`;
     const data = await this.callGroqWithRetry({
       model: this.FAST_MODEL,
-      messages: [
-        { role: "system", content: "You are a semantic router." },
-        {
-          role: "user",
-          content: `DOCUMENT STRUCTURE: ${JSON.stringify(
-            this.state.structureMap
-          )}\n\nUSER QUERY: "${query}"\n\n${prompt}`,
-        },
-      ],
-      temperature: 0.2,
-      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: "You are a semantic router." }, { role: "user", content: `DOCUMENT STRUCTURE: ${JSON.stringify(this.state.structureMap)}\n\nUSER QUERY: "${query}"\n\n${prompt}` }],
+      temperature: 0.2, response_format: { type: "json_object" },
     });
-
-    if (data.error) {
-      console.error("AI Semantic Fallback failed:", data.error.message);
-      return { source: "error", content: [], type: "AI Fallback Failed" };
-    }
-
+    if (data.error) return { source: "error", content: [], type: "AI Fallback Failed" };
     const parsed = this.safeJsonParse(data.choices?.[0]?.message?.content);
     const relevantChapters = parsed?.relevant_chapters || [];
-    const analyses = this.state.chapterAnalyses.filter((c) =>
-      relevantChapters.includes(c.chapter)
-    );
-    const result = {
-      source: `ch${relevantChapters.join(",")}`,
-      content: analyses,
-      type: "AI Fallback",
-    };
-
+    const analyses = this.state.chapterAnalyses.filter((c) => relevantChapters.includes(c.chapter));
+    // Format di sini sudah pasti array, jadi tidak perlu diubah
+    const result = { source: `ch${relevantChapters.join(",")}`, content: analyses, type: "AI Fallback" };
     if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
       const oldestKey = this.state.queryCache.keys().next().value;
       this.state.queryCache.delete(oldestKey);
@@ -795,110 +638,54 @@ class ThesisExaminerApp {
     if (!this.state.sessionActive || this.dom.sendBtn.disabled) return;
     const answer = this.dom.answerInput.value.trim();
     if (!answer) return;
-
     const userMessage = { role: "user", content: answer };
     this.renderMessage("user", answer);
     this.state.chatHistory.push(userMessage);
-    // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
-    if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-        this.state.chatHistory.shift();
-    }
-
-    this.dom.answerInput.value = "";
-    this.setInputDisabled(true);
-    this.showTypingIndicator(true);
-
+    if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) this.state.chatHistory.shift();
+    this.dom.answerInput.value = ""; this.setInputDisabled(true); this.showTypingIndicator(true);
     if (this.state.questionsAsked >= this.state.maxQuestions) {
-      this.renderMessage(
-        "ai",
-        "Sesi ujian selesai. Terima kasih atas partisipasi Anda!"
-      );
-      this.showTypingIndicator(false);
-      this.setInputDisabled(false);
-      this.state.sessionActive = false;
-      return;
+      this.renderMessage("ai", "Sesi ujian selesai. Terima kasih atas partisipasi Anda!");
+      this.showTypingIndicator(false); this.setInputDisabled(false); this.state.sessionActive = false; return;
     }
-
     const context = await this.retrieveContent(answer);
     const examinerPrompt = this.buildExaminerPrompt(context);
-
     const aiResult = await this.callGroqWithRetry({
       model: this.POWERFUL_MODEL,
       messages: [{ role: "user", content: examinerPrompt }],
       response_format: { type: "json_object" },
     });
     if (aiResult.error) {
-      this.renderMessage(
-        "ai",
-        `❌ Maaf, terjadi kesalahan: ${aiResult.error.message}`
-      );
-      this.showTypingIndicator(false);
-      this.setInputDisabled(false);
-      return;
+      this.renderMessage("ai", `❌ Maaf, terjadi kesalahan: ${aiResult.error.message}`);
+      this.showTypingIndicator(false); this.setInputDisabled(false); return;
     }
-    const response = this.safeJsonParse(
-      aiResult.choices?.[0]?.message?.content
-    );
+    const response = this.safeJsonParse(aiResult.choices?.[0]?.message?.content);
     if (!response) {
-      this.renderMessage(
-        "ai",
-        `❌ Maaf, saya menerima respons tidak valid dan tidak dapat melanjutkan.`
-      );
-      this.showTypingIndicator(false);
-      this.setInputDisabled(false);
-      return;
+      this.renderMessage("ai", `❌ Maaf, saya menerima respons tidak valid dan tidak dapat melanjutkan.`);
+      this.showTypingIndicator(false); this.setInputDisabled(false); return;
     }
-
     this.adaptDifficulty(response.score);
-    
-    if (this.state.agentMode !== "exam" && response.feedback) {
-      this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
-    }
-
+    if (this.state.agentMode !== "exam" && response.feedback) this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
     if (response.next_question) {
       this.renderMessage("ai", response.next_question);
       const assistantMessage = { role: "assistant", content: JSON.stringify(response) };
       this.state.chatHistory.push(assistantMessage);
-      // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
-      if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-          this.state.chatHistory.shift();
-      }
-
+      if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) this.state.chatHistory.shift();
       this.state.questionsAsked++;
     } else {
-      this.renderMessage(
-        "ai",
-        "Saya tidak dapat menghasilkan pertanyaan berikutnya. Sesi mungkin perlu dimulai ulang."
-      );
+      this.renderMessage("ai", "Saya tidak dapat menghasilkan pertanyaan berikutnya. Sesi mungkin perlu dimulai ulang.");
     }
-    
     this.saveSessionToStorage();
-
-    this.showTypingIndicator(false);
-    this.setInputDisabled(false);
-    this.dom.answerInput.focus();
+    this.showTypingIndicator(false); this.setInputDisabled(false); this.dom.answerInput.focus();
   }
 
   restartSession(resetUI = true) {
     localStorage.removeItem(this.SESSION_STORAGE_KEY);
     Object.assign(this.state, {
-      sessionId: null,
-      sessionContext: "",
-      chatHistory: [],
-      sessionActive: false,
-      questionsAsked: 0,
-      file: null,
-      difficulty: "adaptive",
-      currentLevel: "medium",
-      agentMode: "friendly",
-      language: "indonesian",
-      structureMap: null,
-      textChunks: [],
-      chapterAnalyses: null,
-      conceptGraph: null,
-      strategicWeaknesses: null,
-      hybridIndex: {},
-      queryCache: new Map(),
+      sessionId: null, fileHash: null, sessionContext: "", chatHistory: [],
+      sessionActive: false, questionsAsked: 0, file: null, difficulty: "adaptive",
+      currentLevel: "medium", agentMode: "friendly", language: "indonesian",
+      structureMap: null, textChunks: [], chapterAnalyses: null, conceptGraph: null,
+      strategicWeaknesses: null, hybridIndex: {}, queryCache: new Map(),
     });
     if (resetUI) {
       this.dom.chatBox.innerHTML = "";
@@ -917,3 +704,4 @@ class ThesisExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new ThesisExaminerApp();
 });
+
