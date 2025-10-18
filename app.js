@@ -11,7 +11,7 @@ class ThesisExaminerApp {
     // Model cepat untuk tugas-tugas struktural
     this.FAST_MODEL = "llama-3.1-8b-instant";
     // Model kuat untuk analisis mendalam
-    this.POWERFUL_MODEL = "llama-3.1-70b-versatile";
+    this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
 
     // --- Manajemen State untuk Arsitektur Baru ---
     this.state = {
@@ -349,4 +349,5 @@ class ThesisExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new ThesisExaminerApp();
 });
+
 
