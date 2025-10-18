@@ -270,14 +270,19 @@ class ThesisExaminerApp {
       
       // Path B: AI Semantic Fallback
       console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
-      const prompt = `Given this thesis structure and a user query, which chapters are most relevant? Return a JSON object like {"relevant_chapters": [2, 4]}.`;
+      
+      // PERBAIKAN: Memasukkan instruksi 'JSON' langsung ke dalam pesan pengguna.
+      const prompt = `Given this thesis structure and a user query, which chapters are most relevant? Return a JSON object with a single key "relevant_chapters" which is an array of numbers, for example: {"relevant_chapters": [2, 4]}.
+      STRUCTURE: ${JSON.stringify(this.state.structureMap)}
+      QUERY: "${query}"`;
+      
       const data = await this.callGroq({
           model: this.FAST_MODEL,
-          messages: [ { role: "system", content: "You are a semantic router." }, { role: "user", content: `STRUCTURE: ${JSON.stringify(this.state.structureMap)}\n\nQUERY: "${query}"` } ],
+          messages: [ { role: "system", content: "You are a semantic router that returns JSON." }, { role: "user", content: prompt } ],
           temperature: 0.2, response_format: { type: "json_object" },
       });
 
-      // PERBAIKAN: Tambahkan penanganan error yang tangguh untuk mencegah crash.
+      // Penanganan error yang tangguh untuk mencegah crash.
       if (data.error) {
           console.error("AI Semantic Fallback failed:", data.error.message);
           // Kembalikan hasil kosong agar aplikasi tidak mogok.
@@ -369,5 +374,4 @@ class ThesisExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new ThesisExaminerApp();
 });
-
 
