@@ -116,11 +116,9 @@ class ThesisExaminerApp {
             const response = await fetch("/api/groq-proxy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
             if (!response.ok) {
                 const errorData = await response.json();
-                // Jangan coba lagi untuk bad request (4xx), karena permintaan mungkin salah
                 if (response.status >= 400 && response.status < 500) {
                     return { error: { message: errorData.error?.message || `Error: ${response.status}` } };
                 }
-                // Coba lagi untuk error server (5xx)
                 throw new Error(`HTTP Error: ${response.status}`);
             }
             return await response.json();
@@ -128,7 +126,7 @@ class ThesisExaminerApp {
             if (i === retries - 1) return { error: { message: `Gagal setelah ${retries} kali percobaan: ${err.message}` } };
             console.warn(`Percobaan API gagal (${i + 1}/${retries}). Mencoba lagi dalam ${delay / 1000} detik...`);
             await new Promise(res => setTimeout(res, delay));
-            delay *= 2; // Exponential backoff
+            delay *= 2;
         }
     }
   }
@@ -139,7 +137,7 @@ class ThesisExaminerApp {
           return JSON.parse(jsonString);
       } catch (e) {
           console.error("Gagal mem-parsing JSON:", jsonString, e);
-          return null; // Kembalikan null jika gagal, jangan membuat crash
+          return null;
       }
   }
 
@@ -156,7 +154,40 @@ class ThesisExaminerApp {
     return content;
   }
 
-  smartChunking(fullText, structure) { /* ... (Tidak ada perubahan signifikan) ... */ }
+  // PERBAIKAN: Membuat fungsi lebih tangguh
+  smartChunking(fullText, structure) {
+    const chunks = [];
+    // Fallback jika struktur atau bab tidak valid
+    if (!structure || !Array.isArray(structure.chapters) || structure.chapters.length === 0) {
+        return [{ number: 1, title: "Full Document", content: fullText }];
+    }
+    
+    for (let i = 0; i < structure.chapters.length; i++) {
+        const chapter = structure.chapters[i];
+        if (!chapter || typeof chapter.number === 'undefined') continue; // Lewati bab yang tidak valid
+
+        const nextChapter = structure.chapters[i + 1];
+        const pattern = new RegExp(`(BAB|CHAPTER)\\s+${chapter.number}[\\s\\n]`, 'i');
+        const match = fullText.match(pattern);
+
+        if (!match) continue;
+
+        const startIndex = match.index;
+        let endIndex = fullText.length;
+        if (nextChapter && typeof nextChapter.number !== 'undefined') {
+            const nextPattern = new RegExp(`(BAB|CHAPTER)\\s+${nextChapter.number}[\\s\\n]`, 'i');
+            const nextMatch = fullText.substring(startIndex + match[0].length).match(nextPattern);
+            if (nextMatch) {
+                endIndex = startIndex + match[0].length + nextMatch.index;
+            }
+        }
+        chunks.push({ number: chapter.number, title: chapter.title || `Chapter ${chapter.number}`, content: fullText.substring(startIndex, endIndex) });
+    }
+    
+    // Jika tidak ada chunk yang berhasil dibuat, kembalikan seluruh dokumen sebagai satu chunk
+    return chunks.length > 0 ? chunks : [{ number: 1, title: "Full Document", content: fullText }];
+  }
+
 
   async parallelDeepDive(chunks) {
     const analysisPromises = chunks.map(chunk => {
@@ -185,19 +216,21 @@ class ThesisExaminerApp {
       return content;
   }
 
-  buildHybridIndex(chapterAnalyses) {
-      const index = { keywordSearch: new Map() };
-      chapterAnalyses.forEach(item => {
-          if (!item.analysis) return;
-          const concepts = item.analysis.key_concepts;
-          if (Array.isArray(concepts)) {
-              concepts.forEach(concept => {
-                  const term = (typeof concept === 'string' ? concept : concept.term)?.toLowerCase();
-                  if (term) index.keywordSearch.set(term, item.chapter);
-              });
-          }
-      });
-      return index;
+  buildHybridIndex(chapterAnalyses) { 
+    const index = { keywordSearch: new Map() };
+    if (!Array.isArray(chapterAnalyses)) return index;
+
+    chapterAnalyses.forEach(item => {
+        if (!item?.analysis) return;
+        const concepts = item.analysis.key_concepts;
+        if (Array.isArray(concepts)) {
+            concepts.forEach(concept => {
+                const term = (typeof concept === 'string' ? concept : concept?.term)?.toLowerCase();
+                if (term) index.keywordSearch.set(term, item.chapter);
+            });
+        }
+    });
+    return index;
   }
   
   async startSession(e) {
@@ -216,7 +249,7 @@ class ThesisExaminerApp {
     try {
       this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
       this.state.structureMap = await this.quickStructureScan(this.state.sessionContext.substring(0, 5000));
-      this.renderMessage("ai", `Struktur ditemukan (${this.state.structureMap.chapters?.length || 0} bab). Memotong teks... [Langkah 2/5]`);
+      this.renderMessage("ai", `Struktur ditemukan (${this.state.structureMap?.chapters?.length || 0} bab). Memotong teks... [Langkah 2/5]`);
       this.state.textChunks = this.smartChunking(this.state.sessionContext, this.state.structureMap);
       this.renderMessage("ai", `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`);
       this.state.chapterAnalyses = await this.parallelDeepDive(this.state.textChunks);
@@ -264,7 +297,6 @@ class ThesisExaminerApp {
               const analysis = this.state.chapterAnalyses.find(c => c.chapter === chapterNum);
               const result = { source: `ch${chapterNum}`, content: analysis, type: "Index Hit" };
               
-              // 4. MANAJEMEN MEMORI & PEMBERSIHAN CACHE
               if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
                   const oldestKey = this.state.queryCache.keys().next().value;
                   this.state.queryCache.delete(oldestKey);
@@ -290,7 +322,6 @@ class ThesisExaminerApp {
       hard: "Formulasikan pertanyaan menantang yang mengkritik asumsi, menanyakan implikasi, atau menyajikan perspektif alternatif berdasarkan konteks."
     };
     
-    // PERBAIKAN: Menambahkan instruksi detail untuk setiap mode AI.
     const agentModeInstructions = {
       strict: "Anda adalah Penguji Tesis 'Strict Teacher'. Anda bersikap kritis, langsung pada intinya, dan memberikan kritik yang tajam namun membangun. Harapkan jawaban yang presisi dan jangan ragu untuk menantang klaim pengguna.",
       friendly: "Anda adalah Penguji Tesis 'Friendly Tutor'. Anda bersikap suportif, positif, dan membimbing. Ajukan pertanyaan yang mendalam dengan nada yang memotivasi. Berikan pujian untuk jawaban yang baik sebelum memberikan kritik.",
