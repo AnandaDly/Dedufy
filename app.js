@@ -177,10 +177,7 @@ class ThesisExaminerApp {
       const index = { keywordSearch: new Map() };
       chapterAnalyses.forEach(item => {
           if (!item.analysis) return;
-          // PASTIKAN 'concepts' SELALU SEBUAH ARRAY
           const concepts = item.analysis.key_concepts;
-          
-          // PERBAIKAN: Hanya jalankan forEach jika 'concepts' adalah sebuah array.
           if (Array.isArray(concepts)) {
               concepts.forEach(concept => {
                   const term = (typeof concept === 'string' ? concept : concept.term)?.toLowerCase();
@@ -222,10 +219,17 @@ class ThesisExaminerApp {
       this.setInputDisabled(false);
       this.renderMessage("ai", "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama.");
 
-      // Meminta pertanyaan pertama dari AI
-      const firstQuestionPrompt = `You are a Thesis Examiner. Your personality is '${this.state.agentMode}'. Based on the analysis, ask the very first question to the student.
+      // PERBAIKAN: Memasukkan instruksi bahasa ke dalam prompt pertanyaan pertama.
+      const languageInstruction = this.state.language === 'indonesian'
+        ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
+        : "STRICT RULE: You MUST use English for all questions and feedback.";
+
+      const firstQuestionPrompt = `You are a Thesis Examiner. Your personality is '${this.state.agentMode}'.
+      ${languageInstruction}
+      Based on the analysis, ask the very first question to the student.
       ANALYSIS: ${JSON.stringify(this.state.strategicWeaknesses || this.state.conceptGraph, null, 2)}
       Return a single valid JSON object: {"feedback": "", "next_question": "...", "score": 0}`;
+      
       const aiResult = await this.callGroq({model: this.POWERFUL_MODEL, messages: [{role: "user", content: firstQuestionPrompt}], response_format: { type: "json_object" } });
       const firstQuestion = JSON.parse(aiResult.choices[0].message.content);
 
@@ -255,7 +259,6 @@ class ThesisExaminerApp {
           return this.state.queryCache.get(cacheKey);
       }
 
-      // Path A: Direct Index Hit (Pencarian Kata Kunci Sederhana)
       const queryWords = query.toLowerCase().split(/\s+/);
       for (const word of queryWords) {
           if (this.state.hybridIndex.keywordSearch.has(word)) {
@@ -268,10 +271,7 @@ class ThesisExaminerApp {
           }
       }
       
-      // Path B: AI Semantic Fallback
       console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
-      
-      // PERBAIKAN: Memasukkan instruksi 'JSON' langsung ke dalam pesan pengguna.
       const prompt = `Given this thesis structure and a user query, which chapters are most relevant? Return a JSON object with a single key "relevant_chapters" which is an array of numbers, for example: {"relevant_chapters": [2, 4]}.
       STRUCTURE: ${JSON.stringify(this.state.structureMap)}
       QUERY: "${query}"`;
@@ -282,21 +282,16 @@ class ThesisExaminerApp {
           temperature: 0.2, response_format: { type: "json_object" },
       });
 
-      // Penanganan error yang tangguh untuk mencegah crash.
       if (data.error) {
           console.error("AI Semantic Fallback failed:", data.error.message);
-          // Kembalikan hasil kosong agar aplikasi tidak mogok.
           return { source: 'error', content: [], type: "AI Fallback Failed" };
       }
 
       try {
-          // Akses respons dengan aman untuk menghindari error jika struktur tidak terduga.
           const content = data.choices?.[0]?.message?.content;
-          if (!content) {
-              throw new Error("Respons AI tidak memiliki konten.");
-          }
+          if (!content) { throw new Error("Respons AI tidak memiliki konten."); }
           const parsedContent = JSON.parse(content);
-          const relevantChapters = parsedContent.relevant_chapters || []; // Default ke array kosong
+          const relevantChapters = parsedContent.relevant_chapters || [];
 
           const analyses = this.state.chapterAnalyses.filter(c => relevantChapters.includes(c.chapter));
           const result = { source: `ch${relevantChapters.join(',')}`, content: analyses, type: "AI Fallback" };
@@ -328,17 +323,29 @@ class ThesisExaminerApp {
       return;
     }
 
-    // Mengambil konteks yang relevan berdasarkan jawaban pengguna
     const context = await this.retrieveContent(answer);
     
-    // Membangun prompt untuk Agen Penguji
-    const examinerPrompt = `You are a Thesis Examiner with a '${this.state.agentMode}' personality. A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
+    // PERBAIKAN: Memasukkan instruksi bahasa ke dalam prompt penguji.
+    const languageInstruction = this.state.language === 'indonesian'
+      ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
+      : "STRICT RULE: You MUST use English for all questions and feedback.";
+
+    const examinerPrompt = `You are a Thesis Examiner with a '${this.state.agentMode}' personality. 
+    ${languageInstruction}
+    A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
     RICH CONTEXT: --- ${JSON.stringify(context, null, 2)} ---
     CHAT HISTORY: --- ${JSON.stringify(this.state.chatHistory.slice(-4))} ---
     Based on ALL the information above, evaluate the user's last answer and formulate your next question.
     Return a single valid JSON object: {"feedback": "...", "next_question": "...", "score": 0-100}`;
 
     const aiResult = await this.callGroq({ model: this.POWERFUL_MODEL, messages: [{ role: "user", content: examinerPrompt }], response_format: { type: "json_object" }});
+    // Menambahkan penanganan error jika panggilan AI gagal
+    if (aiResult.error) {
+        this.renderMessage("ai", `Maaf, terjadi kesalahan: ${aiResult.error.message}`);
+        this.showTypingIndicator(false);
+        this.setInputDisabled(false);
+        return;
+    }
     const response = JSON.parse(aiResult.choices[0].message.content);
 
     // Merender respons
