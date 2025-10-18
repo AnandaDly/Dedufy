@@ -276,11 +276,31 @@ class ThesisExaminerApp {
           messages: [ { role: "system", content: "You are a semantic router." }, { role: "user", content: `STRUCTURE: ${JSON.stringify(this.state.structureMap)}\n\nQUERY: "${query}"` } ],
           temperature: 0.2, response_format: { type: "json_object" },
       });
-      const relevantChapters = JSON.parse(data.choices[0].message.content).relevant_chapters;
-      const analyses = this.state.chapterAnalyses.filter(c => relevantChapters.includes(c.chapter));
-      const result = { source: `ch${relevantChapters.join(',')}`, content: analyses, type: "AI Fallback" };
-      this.state.queryCache.set(cacheKey, result);
-      return result;
+
+      // PERBAIKAN: Tambahkan penanganan error yang tangguh untuk mencegah crash.
+      if (data.error) {
+          console.error("AI Semantic Fallback failed:", data.error.message);
+          // Kembalikan hasil kosong agar aplikasi tidak mogok.
+          return { source: 'error', content: [], type: "AI Fallback Failed" };
+      }
+
+      try {
+          // Akses respons dengan aman untuk menghindari error jika struktur tidak terduga.
+          const content = data.choices?.[0]?.message?.content;
+          if (!content) {
+              throw new Error("Respons AI tidak memiliki konten.");
+          }
+          const parsedContent = JSON.parse(content);
+          const relevantChapters = parsedContent.relevant_chapters || []; // Default ke array kosong
+
+          const analyses = this.state.chapterAnalyses.filter(c => relevantChapters.includes(c.chapter));
+          const result = { source: `ch${relevantChapters.join(',')}`, content: analyses, type: "AI Fallback" };
+          this.state.queryCache.set(cacheKey, result);
+          return result;
+      } catch (e) {
+          console.error("Gagal mem-parsing respons AI Semantic Fallback:", e);
+          return { source: 'error', content: [], type: "AI Fallback Parse Error" };
+      }
   }
   
   // Mengirim pesan dan mengelola alur percakapan
