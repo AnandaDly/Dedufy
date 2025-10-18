@@ -225,29 +225,36 @@ class ThesisExaminerApp {
       return;
     }
     
+    // --- PERBAIKAN DIMULAI DI SINI ---
+    let fileContent;
     try {
-        this.state.sessionContext = await this.readFileContent(file);
+        // 1. Baca konten file ke variabel sementara
+        fileContent = await this.readFileContent(file);
     } catch (err) {
         this.renderMessage("ai", `❌ Error membaca file: ${err.message}`);
         this.removeFile();
         return;
     }
 
-    // --- PERBAIKAN #11: Verifikasi hash file saat memulihkan sesi ---
     if (this.state.sessionActive && this.state.fileHash) {
-      const newHash = await this.calculateHash(this.state.sessionContext);
+      const newHash = await this.calculateHash(fileContent);
       if (newHash !== this.state.fileHash) {
         this.renderMessage("ai", "❌ **Error:** File yang Anda unggah berbeda dari sesi yang disimpan. Silakan unggah file yang benar atau mulai ulang sesi.");
-        this.state.sessionContext = ""; // Kosongkan konteks agar tidak bisa dilanjutkan
+        // Jangan set sessionContext, biarkan kosong agar tidak bisa lanjut
         this.dom.fileInput.value = "";
         return;
       }
       this.renderMessage("ai", "✅ File terverifikasi. Melanjutkan sesi...");
       this.setInputDisabled(false);
     } else {
+      // 2. Bersihkan state sesi lama
       this.restartSession(false);
       this.state.sessionId = crypto.randomUUID();
     }
+
+    // 3. Set sessionContext SETELAH state dibersihkan
+    this.state.sessionContext = fileContent;
+    // --- PERBAIKAN SELESAI ---
 
     this.state.file = file;
     this.dom.fileName.textContent = file.name;
@@ -704,4 +711,5 @@ class ThesisExaminerApp {
 document.addEventListener("DOMContentLoaded", () => {
   new ThesisExaminerApp();
 });
+
 
