@@ -1,8 +1,3 @@
-// =======================================================================
-// AI THESIS EXAMINER - PRODUCTION-READY ARCHITECTURE V3
-// Peningkatan: Persistensi Sesi, Chunking Semantik, Pencarian Semantik,
-//              dan Adaptasi Kesulitan Berbasis Tren
-// =======================================================================
 class ThesisExaminerApp {
   constructor() {
     // --- Konfigurasi Model & Aplikasi ---
@@ -10,6 +5,8 @@ class ThesisExaminerApp {
     this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
     this.MAX_FILE_SIZE_MB = 5;
     this.MAX_CACHE_SIZE = 50;
+    // --- PERBAIKAN #6: Tambahkan batas maksimal untuk riwayat chat ---
+    this.MAX_HISTORY_LENGTH = 50;
     this.SESSION_STORAGE_KEY = "thesisExaminerSession";
 
     // --- Manajemen State ---
@@ -33,6 +30,7 @@ class ThesisExaminerApp {
       conceptGraph: null,
       strategicWeaknesses: null,
       hybridIndex: {},
+      // --- PERBAIKAN #5: Map tetap digunakan, logika LRU diimplementasikan saat akses ---
       queryCache: new Map(),
     };
 
@@ -93,17 +91,14 @@ class ThesisExaminerApp {
       }
     });
 
-    // 1. PERSISTENSI SESI: Coba muat sesi saat aplikasi dimulai
     this.loadSessionFromStorage();
   }
 
-  // =============================================================
-  // 1. PERSISTENSI SESI & PEMULIHAN
-  // =============================================================
   saveSessionToStorage() {
     try {
-      // Kita tidak menyimpan sessionContext (teks file penuh) untuk menghemat ruang
       const stateToSave = { ...this.state, sessionContext: "" };
+      // Ubah Map menjadi array untuk serialisasi JSON
+      stateToSave.queryCache = Array.from(this.state.queryCache.entries());
       localStorage.setItem(
         this.SESSION_STORAGE_KEY,
         JSON.stringify(stateToSave)
@@ -118,15 +113,20 @@ class ThesisExaminerApp {
       const savedStateJSON = localStorage.getItem(this.SESSION_STORAGE_KEY);
       if (savedStateJSON) {
         const savedState = JSON.parse(savedStateJSON);
+        
+        // Ubah array cache kembali menjadi Map
+        if (Array.isArray(savedState.queryCache)) {
+            savedState.queryCache = new Map(savedState.queryCache);
+        } else {
+            savedState.queryCache = new Map();
+        }
 
-        // Memulihkan state, tetapi biarkan file dan context kosong
         Object.assign(this.state, {
           ...savedState,
           file: null,
           sessionContext: "",
         });
 
-        // Memulihkan UI
         if (this.state.sessionActive) {
           this.dom.materialSection.classList.add("hidden");
           this.dom.chatSection.classList.remove("hidden");
@@ -139,7 +139,6 @@ class ThesisExaminerApp {
           this.dom.filePreview.classList.add("hidden");
           this.dom.dropzone.classList.remove("hidden");
 
-          // Render ulang riwayat obrolan
           this.state.chatHistory.forEach((msg) => {
             if (msg.role === "user") {
               this.renderMessage("user", msg.content);
@@ -155,7 +154,7 @@ class ThesisExaminerApp {
             }
           });
 
-          this.setInputDisabled(true); // Nonaktifkan input sampai file diunggah ulang
+          this.setInputDisabled(true);
         }
       }
     } catch (e) {
@@ -164,7 +163,6 @@ class ThesisExaminerApp {
     }
   }
 
-  // --- UI & Utilitas (dengan peningkatan) ---
   renderMessage(role, content) {
     const messageEl = document.createElement("div");
     const isAI = role === "ai";
@@ -226,14 +224,13 @@ class ThesisExaminerApp {
       return;
     }
 
-    // Jika ada sesi aktif yang dipulihkan, lanjutkan
     if (this.state.sessionActive && this.state.sessionId) {
       this.renderMessage("ai", "File diterima. Melanjutkan sesi...");
       this.setInputDisabled(false);
     } else {
-      // Jika ini file baru, mulai sesi baru
-      this.restartSession(false); // Hapus state tapi jangan reset UI sepenuhnya
-      this.state.sessionId = `${file.name}-${file.size}-${Date.now()}`;
+      this.restartSession(false);
+      // --- PERBAIKAN #7: Gunakan crypto.randomUUID() untuk ID sesi yang unik secara global ---
+      this.state.sessionId = crypto.randomUUID();
     }
 
     this.state.file = file;
@@ -294,8 +291,8 @@ class ThesisExaminerApp {
       reader.readAsArrayBuffer(file);
     });
   }
-  // 1. PENANGANAN ERROR & LOGIKA ULANG
-  async callGroqWithRetry(payload, retries = 3, delay = 1000, timeout = 30000) { // timeout 30 detik
+  
+  async callGroqWithRetry(payload, retries = 3, delay = 1000, timeout = 30000) {
     for (let i = 0; i < retries; i++) {
       try {
         const controller = new AbortController();
@@ -305,11 +302,11 @@ class ThesisExaminerApp {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-          signal: controller.signal, // Menghubungkan AbortController ke fetch
+          signal: controller.signal,
         });
 
         const response = await responsePromise;
-        clearTimeout(timeoutId); // Batalkan timeout jika fetch berhasil
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -325,10 +322,8 @@ class ThesisExaminerApp {
         }
         return await response.json();
       } catch (err) {
-        // Cek apakah error disebabkan oleh timeout (AbortError)
         if (err.name === 'AbortError') {
           console.warn(`Percobaan API gagal karena timeout (${timeout / 1000} detik).`);
-          // Jika ini percobaan terakhir, kembalikan error timeout
           if (i === retries - 1) {
             return {
               error: {
@@ -336,7 +331,7 @@ class ThesisExaminerApp {
               },
             };
           }
-        } else if (i === retries - 1) { // Error lain pada percobaan terakhir
+        } else if (i === retries - 1) {
             return {
               error: {
                 message: `Gagal setelah ${retries} kali percobaan: ${err.message}`,
@@ -354,7 +349,7 @@ class ThesisExaminerApp {
       }
     }
   }
-  // 3. FUNGSI PEMBANTU PARSING JSON YANG AMAN
+
   safeJsonParse(jsonString) {
     try {
       return JSON.parse(jsonString);
@@ -364,11 +359,6 @@ class ThesisExaminerApp {
     }
   }
 
-  // =============================================================
-  // SETUP PHASE (dengan peningkatan)
-  // =============================================================
-
-  // 2. SMART CHUNKING YANG LEBIH TANGGUH
   async semanticChunking(textSample) {
     const prompt = `Your task is to act as a document structure analyzer. Read the provided text and identify the main semantic sections or chapters.
     Return a valid JSON object with a single key "chapters", which is an array of objects. Each object should have a "number" and a "title".
@@ -394,12 +384,11 @@ class ThesisExaminerApp {
       console.warn(
         "Semantic chunking gagal, menggunakan fallback dokumen penuh."
       );
-      return { chapters: [] }; // Fallback aman
+      return { chapters: [] };
     }
     return content;
   }
 
-  // Fungsi chunking lokal sekarang menggunakan output dari semantic chunking
   smartChunking(fullText, structure) {
     const chunks = [];
     if (!structure.chapters || structure.chapters.length === 0) {
@@ -407,11 +396,13 @@ class ThesisExaminerApp {
     }
     for (let i = 0; i < structure.chapters.length; i++) {
       const chapter = structure.chapters[i];
-      if (!chapter || typeof chapter.number === "undefined") continue; // Lewati bab yang tidak valid
+      if (!chapter || typeof chapter.number === "undefined") continue;
 
       const nextChapter = structure.chapters[i + 1];
+      // --- PERBAIKAN #8: Regex dibuat lebih fleksibel untuk menangani format judul yang berbeda ---
+      // Mencari 'BAB', 'CHAPTER', 'BAGIAN' diikuti oleh angka Arab atau Romawi.
       const pattern = new RegExp(
-        `(BAB|CHAPTER)\\s+${chapter.number}[\\s\\n]`,
+        `(BAB|CHAPTER|BAGIAN)\\s+(?:${chapter.number}|${toRoman(chapter.number)})[\\s\\.\\n]`,
         "i"
       );
       const match = fullText.match(pattern);
@@ -422,7 +413,7 @@ class ThesisExaminerApp {
       let endIndex = fullText.length;
       if (nextChapter && typeof nextChapter.number !== "undefined") {
         const nextPattern = new RegExp(
-          `(BAB|CHAPTER)\\s+${nextChapter.number}[\\s\\n]`,
+           `(BAB|CHAPTER|BAGIAN)\\s+(?:${nextChapter.number}|${toRoman(nextChapter.number)})[\\s\\.\\n]`,
           "i"
         );
         const nextMatch = fullText
@@ -437,6 +428,17 @@ class ThesisExaminerApp {
         title: chapter.title || `Chapter ${chapter.number}`,
         content: fullText.substring(startIndex, endIndex),
       });
+    }
+    // Tambahkan helper function untuk konversi ke angka romawi jika diperlukan
+    function toRoman(num) {
+        const roman = {M:1000,CM:900,D:500,CD:400,C:100,XC:90,L:50,XL:40,X:10,IX:9,V:5,IV:4,I:1};
+        let str = '';
+        for (let i of Object.keys(roman)) {
+            let q = Math.floor(num / roman[i]);
+            num -= q * roman[i];
+            str += i.repeat(q);
+        }
+        return str;
     }
 
     return chunks;
@@ -454,10 +456,8 @@ class ThesisExaminerApp {
           },
           {
             role: "user",
-            content: `CONTENT:\n---\n${chunk.content.substring(
-              0,
-              15000
-            )}\n---\nINSTRUCTIONS:\n${perChapterPrompt}`,
+            // --- PERBAIKAN #3: Hapus .substring() untuk mengirim seluruh konten bab ---
+            content: `CONTENT:\n---\n${chunk.content}\n---\nINSTRUCTIONS:\n${perChapterPrompt}`,
           },
         ],
         temperature: 0.3,
@@ -544,7 +544,6 @@ class ThesisExaminerApp {
 
     try {
       this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
-      // Menggunakan semanticChunking
       this.state.structureMap = await this.semanticChunking(
         this.state.sessionContext.substring(0, 10000)
       );
@@ -599,13 +598,16 @@ class ThesisExaminerApp {
 
       if (firstQuestion?.next_question) {
         this.renderMessage("ai", firstQuestion.next_question);
-        this.state.chatHistory.push({
-          role: "assistant",
-          content: JSON.stringify(firstQuestion),
-        });
+        
+        const assistantMessage = { role: "assistant", content: JSON.stringify(firstQuestion) };
+        this.state.chatHistory.push(assistantMessage);
+        // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
+        if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
+            this.state.chatHistory.shift();
+        }
+
         this.state.questionsAsked++;
       }
-      // Simpan sesi setelah analisis berhasil
       this.saveSessionToStorage();
     } catch (error) {
       console.error("Setup Phase Failed:", error);
@@ -618,17 +620,17 @@ class ThesisExaminerApp {
     }
   }
 
-  // =============================================================
-  // QUERY PHASE (dengan peningkatan)
-  // =============================================================
-
-  // 3. PENINGKATAN PENGAMBILAN KONTEKS (PENCARIAN SEMANTIK)
   async retrieveContent(query) {
     const cacheKey = query.toLowerCase();
-    if (this.state.queryCache.has(cacheKey))
-      return this.state.queryCache.get(cacheKey);
+    // --- PERBAIKAN #5: Implementasi logika LRU pada cache hit ---
+    if (this.state.queryCache.has(cacheKey)) {
+      const value = this.state.queryCache.get(cacheKey);
+      // Hapus dan set ulang untuk memindahkannya ke akhir (menjadi yang terbaru)
+      this.state.queryCache.delete(cacheKey);
+      this.state.queryCache.set(cacheKey, value);
+      return value;
+    }
 
-    // Jalur A: Pencarian Indeks Kata Kunci
     const queryWords = query.toLowerCase().split(/\s+/);
     for (const word of queryWords) {
       if (this.state.hybridIndex.keywordSearch.has(word)) {
@@ -642,17 +644,17 @@ class ThesisExaminerApp {
           type: "Index Hit",
         };
 
+        // --- PERBAIKAN #5: Implementasi logika penggusuran LRU/FIFO ---
+        // Dengan Map, key pertama adalah yang paling lama dimasukkan (atau diakses)
         if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
           const oldestKey = this.state.queryCache.keys().next().value;
           this.state.queryCache.delete(oldestKey);
-          console.log(`Cache Penuh. Menghapus entri lama: ${oldestKey}`);
         }
         this.state.queryCache.set(cacheKey, result);
         return result;
       }
     }
 
-    // Jalur B: AI Semantic Fallback
     console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
     const prompt = `You are a semantic router. Your task is to find the most relevant chapters to answer the user's query based on the document's structure.
       Return a valid JSON object with a single key "relevant_chapters", which is an array of chapter numbers.
@@ -689,11 +691,9 @@ class ThesisExaminerApp {
       type: "AI Fallback",
     };
 
-    // Simpan hasil ke cache
     if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
       const oldestKey = this.state.queryCache.keys().next().value;
       this.state.queryCache.delete(oldestKey);
-      console.log(`Cache Penuh. Menghapus entri lama: ${oldestKey}`);
     }
     this.state.queryCache.set(cacheKey, result);
     return result;
@@ -756,18 +756,17 @@ class ThesisExaminerApp {
     return prompt;
   }
 
-  // 4. OPTIMISASI PROMPT DINAMIS
   adaptDifficulty(score) {
     if (this.state.difficulty !== "adaptive") return;
 
-    // Tambahkan skor baru ke riwayat
     this.state.scoreHistory.push(score);
     if (this.state.scoreHistory.length > 5) {
-      this.state.scoreHistory.shift(); // Jaga agar riwayat tetap 5 skor terakhir
+      this.state.scoreHistory.shift();
     }
 
-    // Ambil rata-rata dari 3 skor terakhir untuk tren
     const recentScores = this.state.scoreHistory.slice(-3);
+    if (recentScores.length < 3) return; // Tunggu sampai ada cukup data
+
     const averageScore =
       recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
 
@@ -797,8 +796,14 @@ class ThesisExaminerApp {
     const answer = this.dom.answerInput.value.trim();
     if (!answer) return;
 
+    const userMessage = { role: "user", content: answer };
     this.renderMessage("user", answer);
-    this.state.chatHistory.push({ role: "user", content: answer });
+    this.state.chatHistory.push(userMessage);
+    // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
+    if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
+        this.state.chatHistory.shift();
+    }
+
     this.dom.answerInput.value = "";
     this.setInputDisabled(true);
     this.showTypingIndicator(true);
@@ -845,19 +850,20 @@ class ThesisExaminerApp {
     }
 
     this.adaptDifficulty(response.score);
-
-    // Simpan sesi setelah setiap giliran
-    this.saveSessionToStorage();
-
+    
     if (this.state.agentMode !== "exam" && response.feedback) {
       this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
     }
+
     if (response.next_question) {
       this.renderMessage("ai", response.next_question);
-      this.state.chatHistory.push({
-        role: "assistant",
-        content: JSON.stringify(response),
-      });
+      const assistantMessage = { role: "assistant", content: JSON.stringify(response) };
+      this.state.chatHistory.push(assistantMessage);
+      // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
+      if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
+          this.state.chatHistory.shift();
+      }
+
       this.state.questionsAsked++;
     } else {
       this.renderMessage(
@@ -865,6 +871,8 @@ class ThesisExaminerApp {
         "Saya tidak dapat menghasilkan pertanyaan berikutnya. Sesi mungkin perlu dimulai ulang."
       );
     }
+    
+    this.saveSessionToStorage();
 
     this.showTypingIndicator(false);
     this.setInputDisabled(false);
@@ -872,8 +880,9 @@ class ThesisExaminerApp {
   }
 
   restartSession(resetUI = true) {
-    localStorage.removeItem(this.SESSION_STORAGE_KEY); // Hapus sesi dari penyimpanan
+    localStorage.removeItem(this.SESSION_STORAGE_KEY);
     Object.assign(this.state, {
+      sessionId: null,
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
