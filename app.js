@@ -1,17 +1,20 @@
 // =======================================================================
-// AI THESIS EXAMINER - PRODUCTION-READY ARCHITECTURE V2
-// Peningkatan: Penanganan Error, Validasi, dan Manajemen Memori
+// AI THESIS EXAMINER - PRODUCTION-READY ARCHITECTURE V3
+// Peningkatan: Persistensi Sesi, Chunking Semantik, Pencarian Semantik,
+//              dan Adaptasi Kesulitan Berbasis Tren
 // =======================================================================
 class ThesisExaminerApp {
   constructor() {
     // --- Konfigurasi Model & Aplikasi ---
     this.FAST_MODEL = "llama-3.1-8b-instant";
     this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
-    this.MAX_FILE_SIZE_MB = 5; // Batas ukuran file dalam MB
-    this.MAX_CACHE_SIZE = 50;  // Jumlah maksimum entri dalam cache
+    this.MAX_FILE_SIZE_MB = 5;
+    this.MAX_CACHE_SIZE = 50;
+    this.SESSION_STORAGE_KEY = "thesisExaminerSession";
 
     // --- Manajemen State ---
     this.state = {
+      sessionId: null, // ID unik untuk setiap sesi file
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
@@ -22,6 +25,8 @@ class ThesisExaminerApp {
       currentLevel: "medium",
       agentMode: "friendly",
       language: "indonesian",
+      scoreHistory: [], // Untuk adaptasi kesulitan berbasis tren
+      // Artefak analisis
       structureMap: null,
       textChunks: [],
       chapterAnalyses: null,
@@ -64,6 +69,8 @@ class ThesisExaminerApp {
     this.startSession = this.startSession.bind(this);
     this.sendMessage = this.sendMessage.bind(this);
     this.restartSession = this.restartSession.bind(this);
+    
+    // Setup event listeners...
     this.dom.dropzone.addEventListener("click", () => this.dom.fileInput.click());
     this.dom.fileInput.addEventListener("change", this.handleFileSelect);
     this.dom.dropzone.addEventListener("dragover", this.handleDragOver);
@@ -77,8 +84,64 @@ class ThesisExaminerApp {
     this.dom.answerInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
     });
+
+    // 1. PERSISTENSI SESI: Coba muat sesi saat aplikasi dimulai
+    this.loadSessionFromStorage();
   }
 
+  // =============================================================
+  // 1. PERSISTENSI SESI & PEMULIHAN
+  // =============================================================
+  saveSessionToStorage() {
+    try {
+      // Kita tidak menyimpan sessionContext (teks file penuh) untuk menghemat ruang
+      const stateToSave = { ...this.state, sessionContext: "" };
+      localStorage.setItem(this.SESSION_STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (e) {
+      console.error("Gagal menyimpan sesi:", e);
+    }
+  }
+
+  loadSessionFromStorage() {
+    try {
+      const savedStateJSON = localStorage.getItem(this.SESSION_STORAGE_KEY);
+      if (savedStateJSON) {
+        const savedState = JSON.parse(savedStateJSON);
+        
+        // Memulihkan state, tetapi biarkan file dan context kosong
+        Object.assign(this.state, { ...savedState, file: null, sessionContext: "" });
+        
+        // Memulihkan UI
+        if (this.state.sessionActive) {
+          this.dom.materialSection.classList.add("hidden");
+          this.dom.chatSection.classList.remove("hidden");
+          this.dom.loadingSpinner.classList.add("hidden");
+          
+          this.renderMessage("ai", "Sesi sebelumnya berhasil dipulihkan. Silakan unggah kembali file yang sama untuk melanjutkan.");
+          this.dom.filePreview.classList.add("hidden");
+          this.dom.dropzone.classList.remove("hidden");
+          
+          // Render ulang riwayat obrolan
+          this.state.chatHistory.forEach(msg => {
+            if (msg.role === 'user') {
+              this.renderMessage('user', msg.content);
+            } else if (msg.role === 'assistant') {
+              const parsedContent = this.safeJsonParse(msg.content);
+              if (parsedContent?.feedback) this.renderMessage('ai', `*Feedback: ${parsedContent.feedback}*`);
+              if (parsedContent?.next_question) this.renderMessage('ai', parsedContent.next_question);
+            }
+          });
+
+          this.setInputDisabled(true); // Nonaktifkan input sampai file diunggah ulang
+        }
+      }
+    } catch (e) {
+      console.error("Gagal memuat sesi:", e);
+      localStorage.removeItem(this.SESSION_STORAGE_KEY);
+    }
+  }
+
+  // --- UI & Utilitas (dengan peningkatan) ---
   renderMessage(role, content) {
     const messageEl = document.createElement("div");
     const isAI = role === "ai";
@@ -98,17 +161,38 @@ class ThesisExaminerApp {
   handleFileSelect(e) { if (e.target.files.length) this.handleFile(e.target.files[0]); }
   
   async handleFile(file) {
-    // 2. VALIDASI UKURAN FILE
     if (file.size > this.MAX_FILE_SIZE_MB * 1024 * 1024) {
       this.renderMessage("ai", `❌ **Error:** Ukuran file melebihi batas ${this.MAX_FILE_SIZE_MB} MB.`);
-      this.dom.fileInput.value = ""; // Reset input file
+      this.dom.fileInput.value = "";
       return;
     }
 
-    this.state.file = file; this.dom.fileName.textContent = file.name; this.dom.fileSize.textContent = `(${(file.size / 1024).toFixed(1)} KB)`; this.dom.filePreview.classList.remove("hidden"); this.dom.dropzone.classList.add("hidden"); this.dom.startBtn.disabled = false; try { this.state.sessionContext = await this.readFileContent(file); } catch (err) { this.renderMessage("ai", `❌ Error membaca file: ${err.message}`); this.removeFile(); }}
+    // Jika ada sesi aktif yang dipulihkan, lanjutkan
+    if (this.state.sessionActive && this.state.sessionId) {
+        this.renderMessage("ai", "File diterima. Melanjutkan sesi...");
+        this.setInputDisabled(false);
+    } else {
+        // Jika ini file baru, mulai sesi baru
+        this.restartSession(false); // Hapus state tapi jangan reset UI sepenuhnya
+        this.state.sessionId = `${file.name}-${file.size}-${Date.now()}`;
+    }
+
+    this.state.file = file;
+    this.dom.fileName.textContent = file.name;
+    this.dom.fileSize.textContent = `(${(file.size / 1024).toFixed(1)} KB)`;
+    this.dom.filePreview.classList.remove("hidden");
+    this.dom.dropzone.classList.add("hidden");
+    this.dom.startBtn.disabled = false;
+    try {
+      this.state.sessionContext = await this.readFileContent(file);
+    } catch (err) {
+      this.renderMessage("ai", `❌ Error membaca file: ${err.message}`);
+      this.removeFile();
+    }
+  }
+  
   removeFile() { this.state.file = null; this.state.sessionContext = ""; this.dom.fileInput.value = ""; this.dom.filePreview.classList.add("hidden"); this.dom.dropzone.classList.remove("hidden"); this.dom.startBtn.disabled = true; this.restartSession(); }
   readFileContent(file) { const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); return new Promise((resolve, reject) => { reader.onerror = () => reject(new DOMException("Problem parsing input file.")); reader.onload = async () => { try { const buffer = reader.result; if (ext === "txt") resolve(new TextDecoder().decode(buffer)); else if (ext === "pdf") { const pdf = await pdfjsLib.getDocument({ data: buffer }).promise; let text = ""; for (let i = 1; i <= pdf.numPages; i++) { const page = await pdf.getPage(i); const content = await page.getTextContent(); text += content.items.map((item) => item.str).join(" ") + "\n\n"; } resolve(text); } else if (ext === "docx") { const result = await mammoth.extractRawText({ arrayBuffer: buffer }); resolve(result.value); } else reject(new Error("Unsupported format. Please use .txt, .pdf, or .docx.")); } catch (error) { reject(error); } }; reader.readAsArrayBuffer(file); }); }
-  
   // 1. PENANGANAN ERROR & LOGIKA ULANG
   async callGroqWithRetry(payload, retries = 3, delay = 1000) {
     for (let i = 0; i < retries; i++) {
@@ -130,7 +214,6 @@ class ThesisExaminerApp {
         }
     }
   }
-
   // 3. FUNGSI PEMBANTU PARSING JSON YANG AMAN
   safeJsonParse(jsonString) {
       try {
@@ -142,26 +225,33 @@ class ThesisExaminerApp {
   }
 
   // =============================================================
-  // SETUP PHASE: Diorkestrasi oleh startSession()
+  // SETUP PHASE (dengan peningkatan)
   // =============================================================
 
-  async quickStructureScan(textSample) {
-    const prompt = `Extract ONLY the chapter titles and numbers. Return a valid JSON object like {"chapters": [{"number": 1, "title": "Introduction"}]}.`;
-    const data = await this.callGroqWithRetry({ model: this.FAST_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.1, response_format: { type: "json_object" } });
-    if (data.error) throw new Error(`Gagal memindai struktur: ${data.error.message}`);
+  // 2. SMART CHUNKING YANG LEBIH TANGGUH
+  async semanticChunking(textSample) {
+    const prompt = `Your task is to act as a document structure analyzer. Read the provided text and identify the main semantic sections or chapters.
+    Return a valid JSON object with a single key "chapters", which is an array of objects. Each object should have a "number" and a "title".
+    Example: {"chapters": [{"number": 1, "title": "Introduction"}, {"number": 2, "title": "Literature Review"}]}.
+    If you cannot identify clear chapters, return an empty array.`;
+    
+    const data = await this.callGroqWithRetry({ model: this.FAST_MODEL, messages: [{ role: "user", content: prompt + `\n\nTEXT TO ANALYZE:\n---\n${textSample}` }], temperature: 0.1, response_format: { type: "json_object" } });
+    if (data.error) throw new Error(`Gagal menganalisis struktur: ${data.error.message}`);
+    
     const content = this.safeJsonParse(data.choices?.[0]?.message?.content);
-    if (!content) throw new Error("Respons struktur tidak valid dari AI.");
+    if (!content || !Array.isArray(content.chapters)) {
+        console.warn("Semantic chunking gagal, menggunakan fallback dokumen penuh.");
+        return { chapters: [] }; // Fallback aman
+    }
     return content;
   }
 
-  // PERBAIKAN: Membuat fungsi lebih tangguh
+  // Fungsi chunking lokal sekarang menggunakan output dari semantic chunking
   smartChunking(fullText, structure) {
     const chunks = [];
-    // Fallback jika struktur atau bab tidak valid
-    if (!structure || !Array.isArray(structure.chapters) || structure.chapters.length === 0) {
+    if (!structure.chapters || structure.chapters.length === 0) {
         return [{ number: 1, title: "Full Document", content: fullText }];
     }
-    
     for (let i = 0; i < structure.chapters.length; i++) {
         const chapter = structure.chapters[i];
         if (!chapter || typeof chapter.number === 'undefined') continue; // Lewati bab yang tidak valid
@@ -183,11 +273,9 @@ class ThesisExaminerApp {
         }
         chunks.push({ number: chapter.number, title: chapter.title || `Chapter ${chapter.number}`, content: fullText.substring(startIndex, endIndex) });
     }
-    
-    // Jika tidak ada chunk yang berhasil dibuat, kembalikan seluruh dokumen sebagai satu chunk
-    return chunks.length > 0 ? chunks : [{ number: 1, title: "Full Document", content: fullText }];
-  }
 
+    return chunks;
+  }
 
   async parallelDeepDive(chunks) {
     const analysisPromises = chunks.map(chunk => {
@@ -248,7 +336,8 @@ class ThesisExaminerApp {
     
     try {
       this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
-      this.state.structureMap = await this.quickStructureScan(this.state.sessionContext.substring(0, 5000));
+      // Menggunakan semanticChunking
+      this.state.structureMap = await this.semanticChunking(this.state.sessionContext.substring(0, 10000));
       this.renderMessage("ai", `Struktur ditemukan (${this.state.structureMap?.chapters?.length || 0} bab). Memotong teks... [Langkah 2/5]`);
       this.state.textChunks = this.smartChunking(this.state.sessionContext, this.state.structureMap);
       this.renderMessage("ai", `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`);
@@ -264,17 +353,9 @@ class ThesisExaminerApp {
       this.dom.chatSection.classList.remove("hidden");
       this.setInputDisabled(false);
       this.renderMessage("ai", "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama.");
-
-      const firstQuestionPrompt = this.buildExaminerPrompt();
-      const aiResult = await this.callGroqWithRetry({model: this.POWERFUL_MODEL, messages: [{role: "user", content: firstQuestionPrompt}], response_format: { type: "json_object" } });
-      if(aiResult.error) throw new Error(aiResult.error.message);
-      const firstQuestion = this.safeJsonParse(aiResult.choices?.[0]?.message?.content);
-
-      if (firstQuestion?.next_question) {
-          this.renderMessage("ai", firstQuestion.next_question);
-          this.state.chatHistory.push({ role: 'assistant', content: JSON.stringify(firstQuestion) });
-          this.state.questionsAsked++;
-      }
+      
+      // Simpan sesi setelah analisis berhasil
+      this.saveSessionToStorage();
     } catch (error) {
         console.error("Setup Phase Failed:", error);
         this.renderMessage("ai", `❌ **Error Fatal:** ${error.message}. Sesi tidak dapat dimulai. Silakan mulai ulang.`);
@@ -284,12 +365,15 @@ class ThesisExaminerApp {
   }
 
   // =============================================================
-  // QUERY PHASE & PROMPT ENGINEERING
+  // QUERY PHASE (dengan peningkatan)
   // =============================================================
   
-  retrieveContent(query) {
+  // 3. PENINGKATAN PENGAMBILAN KONTEKS (PENCARIAN SEMANTIK)
+  async retrieveContent(query) {
       const cacheKey = query.toLowerCase();
-      if (this.state.queryCache.has(cacheKey)) { return this.state.queryCache.get(cacheKey); }
+      if (this.state.queryCache.has(cacheKey)) return this.state.queryCache.get(cacheKey);
+      
+      // Jalur A: Pencarian Indeks Kata Kunci
       const queryWords = query.toLowerCase().split(/\s+/);
       for (const word of queryWords) {
           if (this.state.hybridIndex.keywordSearch.has(word)) {
@@ -306,7 +390,37 @@ class ThesisExaminerApp {
               return result;
           }
       }
-      return { source: 'none', content: null, type: "Index Miss" };
+
+      // Jalur B: AI Semantic Fallback
+      console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
+      const prompt = `You are a semantic router. Your task is to find the most relevant chapters to answer the user's query based on the document's structure.
+      Return a valid JSON object with a single key "relevant_chapters", which is an array of chapter numbers.
+      Example: {"relevant_chapters": [2, 4]}.`;
+      
+      const data = await this.callGroqWithRetry({
+          model: this.FAST_MODEL,
+          messages: [ { role: "system", content: "You are a semantic router." }, { role: "user", content: `DOCUMENT STRUCTURE: ${JSON.stringify(this.state.structureMap)}\n\nUSER QUERY: "${query}"\n\n${prompt}` } ],
+          temperature: 0.2, response_format: { type: "json_object" },
+      });
+
+      if (data.error) {
+          console.error("AI Semantic Fallback failed:", data.error.message);
+          return { source: 'error', content: [], type: "AI Fallback Failed" };
+      }
+      
+      const parsed = this.safeJsonParse(data.choices?.[0]?.message?.content);
+      const relevantChapters = parsed?.relevant_chapters || [];
+      const analyses = this.state.chapterAnalyses.filter(c => relevantChapters.includes(c.chapter));
+      const result = { source: `ch${relevantChapters.join(',')}`, content: analyses, type: "AI Fallback" };
+      
+      // Simpan hasil ke cache
+      if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
+        const oldestKey = this.state.queryCache.keys().next().value;
+        this.state.queryCache.delete(oldestKey);
+        console.log(`Cache Penuh. Menghapus entri lama: ${oldestKey}`);
+      }
+      this.state.queryCache.set(cacheKey, result);
+      return result;
   }
 
   buildExaminerPrompt(context = null) {
@@ -355,20 +469,28 @@ class ThesisExaminerApp {
     return prompt;
   }
 
+  // 4. OPTIMISASI PROMPT DINAMIS
   adaptDifficulty(score) {
     if (this.state.difficulty !== "adaptive") return;
-    if (score > 80 && this.state.currentLevel === "easy") {
-        this.state.currentLevel = "medium";
-        console.log("Difficulty adapted to: medium");
-    } else if (score > 80 && this.state.currentLevel === "medium") {
-        this.state.currentLevel = "hard";
-        console.log("Difficulty adapted to: hard");
-    } else if (score < 40 && this.state.currentLevel === "hard") {
-        this.state.currentLevel = "medium";
-        console.log("Difficulty adapted to: medium");
-    } else if (score < 40 && this.state.currentLevel === "medium") {
-        this.state.currentLevel = "easy";
-        console.log("Difficulty adapted to: easy");
+    
+    // Tambahkan skor baru ke riwayat
+    this.state.scoreHistory.push(score);
+    if (this.state.scoreHistory.length > 5) {
+        this.state.scoreHistory.shift(); // Jaga agar riwayat tetap 5 skor terakhir
+    }
+
+    // Ambil rata-rata dari 3 skor terakhir untuk tren
+    const recentScores = this.state.scoreHistory.slice(-3);
+    const averageScore = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
+
+    console.log(`Adapting difficulty. Recent scores: [${recentScores.join(', ')}], Average: ${averageScore.toFixed(1)}`);
+    
+    if (averageScore > 85 && this.state.currentLevel !== "hard") {
+        this.state.currentLevel = this.state.currentLevel === "easy" ? "medium" : "hard";
+        console.log(`Trend positif. Kesulitan dinaikkan ke: ${this.state.currentLevel}`);
+    } else if (averageScore < 45 && this.state.currentLevel !== "easy") {
+        this.state.currentLevel = this.state.currentLevel === "hard" ? "medium" : "easy";
+        console.log(`Trend negatif. Kesulitan diturunkan ke: ${this.state.currentLevel}`);
     }
   }
 
@@ -399,13 +521,16 @@ class ThesisExaminerApp {
         return;
     }
     const response = this.safeJsonParse(aiResult.choices?.[0]?.message?.content);
-    if (!response) {
-        this.renderMessage("ai", `❌ Maaf, saya menerima respons tidak valid dan tidak dapat melanjutkan.`);
-        this.showTypingIndicator(false); this.setInputDisabled(false);
-        return;
+    if (!response) { 
+      this.renderMessage("ai", `❌ Maaf, saya menerima respons tidak valid dan tidak dapat melanjutkan.`);
+      this.showTypingIndicator(false); this.setInputDisabled(false);
+      return;
     }
     
     this.adaptDifficulty(response.score);
+    
+    // Simpan sesi setelah setiap giliran
+    this.saveSessionToStorage();
 
     if (this.state.agentMode !== "exam" && response.feedback) {
       this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
@@ -423,14 +548,15 @@ class ThesisExaminerApp {
     this.dom.answerInput.focus();
   }
 
-  restartSession() {
+  restartSession(resetUI = true) {
+    localStorage.removeItem(this.SESSION_STORAGE_KEY); // Hapus sesi dari penyimpanan
     Object.assign(this.state, {
         sessionContext: "", chatHistory: [], sessionActive: false, questionsAsked: 0, file: null,
         difficulty: "adaptive", currentLevel: "medium", agentMode: "friendly", language: "indonesian",
         structureMap: null, textChunks: [], chapterAnalyses: null, conceptGraph: null,
         strategicWeaknesses: null, hybridIndex: {}, queryCache: new Map()
     });
-    this.dom.chatBox.innerHTML = "";
+    if(resetUI) { this.dom.chatBox.innerHTML = "";
     this.dom.chatBox.appendChild(this.dom.typingIndicator);
     this.dom.materialSection.classList.remove("hidden");
     this.dom.chatSection.classList.add("hidden");
@@ -438,7 +564,7 @@ class ThesisExaminerApp {
     this.setInputDisabled(false);
     this.dom.difficultySelect.value = "adaptive";
     this.dom.agentModeSelect.value = "friendly";
-    this.dom.languageSelect.value = "indonesian";
+    this.dom.languageSelect.value = "indonesian";}
   }
 }
 
