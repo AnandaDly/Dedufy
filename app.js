@@ -1,24 +1,45 @@
-// A modern, encapsulated class to manage the entire application
-class AIExaminerApp {
-  // The constructor initializes the application's state and finds all necessary HTML elements
+// =======================================================================
+// AI THESIS EXAMINER - ENHANCED HIERARCHICAL ARCHITECTURE
+// Diadopsi dari spesifikasi profesional "Material Analyst Agent Workflows"
+// Alur Kerja:
+// 1. Pemindaian Struktur Cepat -> 2. Pemotongan Teks Cerdas -> 3. Analisis Mendalam Paralel
+// 4. Sintesis Konsep -> 5. Identifikasi Kelemahan -> 6. Pembangunan Indeks Hibrida
+// =======================================================================
+class ThesisExaminerApp {
   constructor() {
-    this.MODEL = "llama-3.3-70b-versatile"; // Latest powerful model
+    // --- Konfigurasi Model ---
+    // Model cepat untuk tugas-tugas struktural
+    this.FAST_MODEL = "llama-3.1-8b-instant";
+    // Model kuat untuk analisis mendalam
+    this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
 
-    // 1. Centralized state management (apiKey is no longer needed here)
+    // --- Manajemen State untuk Arsitektur Baru ---
     this.state = {
+      // State sesi & UI
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
+      file: null,
+      questionsAsked: 0,
+      maxQuestions: 10,
+
+      // Pengaturan kepribadian agen
       difficulty: "adaptive",
       currentLevel: "medium",
       agentMode: "friendly",
-      questionsAsked: 0,
-      maxQuestions: 10,
       language: "indonesian",
-      file: null,
+
+      // Artefak dari fase penyiapan (setup phase)
+      structureMap: null, // Output dari Langkah 1
+      textChunks: [], // Output dari Langkah 2
+      chapterAnalyses: null, // Output dari Langkah 3
+      conceptGraph: null, // Output dari Langkah 4
+      strategicWeaknesses: null, // Output dari Langkah 5
+      hybridIndex: {}, // Output dari Langkah 6
+      queryCache: new Map(), // Untuk menyimpan hasil pencarian AI
     };
 
-    // 2. Centralized DOM references (apiKeyInput removed)
+    // --- Referensi Elemen DOM ---
     this.dom = {
       dropzone: document.getElementById("dropzone"),
       fileInput: document.getElementById("fileInput"),
@@ -28,6 +49,7 @@ class AIExaminerApp {
       removeFileBtn: document.getElementById("remove-file-btn"),
       difficultySelect: document.getElementById("difficultySelect"),
       agentModeSelect: document.getElementById("agentModeSelect"),
+      languageSelect: document.getElementById("languageSelect"),
       uploadForm: document.getElementById("upload-form"),
       startBtn: document.getElementById("startBtn"),
       materialSection: document.getElementById("material-section"),
@@ -36,7 +58,6 @@ class AIExaminerApp {
       chatBox: document.getElementById("chatBox"),
       answerInput: document.getElementById("answerInput"),
       sendBtn: document.getElementById("sendBtn"),
-      languageSelect: document.getElementById("languageSelect"),
       restartBtn: document.getElementById("restartBtn"),
       typingIndicator: document.getElementById("typing-indicator"),
     };
@@ -44,7 +65,7 @@ class AIExaminerApp {
     this.init();
   }
 
-  // Binds all event listeners
+  // --- Metode Inisialisasi dan UI Dasar (Sebagian besar tidak berubah) ---
   init() {
     this.handleFileSelect = this.handleFileSelect.bind(this);
     this.handleFileDrop = this.handleFileDrop.bind(this);
@@ -52,7 +73,6 @@ class AIExaminerApp {
     this.startSession = this.startSession.bind(this);
     this.sendMessage = this.sendMessage.bind(this);
     this.restartSession = this.restartSession.bind(this);
-
     this.dom.dropzone.addEventListener("click", () =>
       this.dom.fileInput.click()
     );
@@ -63,10 +83,11 @@ class AIExaminerApp {
     this.dom.removeFileBtn.addEventListener("click", this.removeFile);
     this.dom.uploadForm.addEventListener("submit", this.startSession);
     this.dom.sendBtn.addEventListener("click", this.sendMessage);
-    this.dom.languageSelect.addEventListener("change", (e) => {
-      this.state.language = e.target.value;
-    });
     this.dom.restartBtn.addEventListener("click", this.restartSession);
+    this.dom.languageSelect.addEventListener(
+      "change",
+      (e) => (this.state.language = e.target.value)
+    );
     this.dom.answerInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -75,7 +96,6 @@ class AIExaminerApp {
     });
   }
 
-  // --- UI Update Methods ---
   renderMessage(role, content) {
     const messageEl = document.createElement("div");
     const isAI = role === "ai";
@@ -88,15 +108,11 @@ class AIExaminerApp {
     const layoutClasses = isAI
       ? "flex items-start gap-3"
       : "flex items-start justify-end gap-3";
-    messageEl.innerHTML = `
-      <div class="${layoutClasses}">
-        ${isAI ? avatar : ""}
-        <div class="p-3 ${bubbleClasses}">${content.replace(
-      /\n/g,
-      "<br>"
-    )}</div>
-        ${!isAI ? avatar : ""}
-      </div>`;
+    messageEl.innerHTML = `<div class="${layoutClasses}">${
+      isAI ? avatar : ""
+    }<div class="p-3 ${bubbleClasses}">${content.replace(/\n/g, "<br>")}</div>${
+      !isAI ? avatar : ""
+    }</div>`;
     this.dom.chatBox.insertBefore(messageEl, this.dom.typingIndicator);
     this.dom.chatBox.scrollTop = this.dom.chatBox.scrollHeight;
   }
@@ -105,15 +121,12 @@ class AIExaminerApp {
     this.dom.typingIndicator.classList.toggle("hidden", !show);
     if (show) this.dom.chatBox.scrollTop = this.dom.chatBox.scrollHeight;
   }
-
   setInputDisabled(disabled) {
     this.dom.answerInput.disabled = disabled;
     this.dom.sendBtn.disabled = disabled;
     this.dom.sendBtn.classList.toggle("opacity-50", disabled);
     this.dom.sendBtn.classList.toggle("cursor-not-allowed", disabled);
   }
-
-  // --- File Handling ---
   handleDragOver(e) {
     e.preventDefault();
     e.currentTarget.classList.add("border-teal-400", "bg-teal-50");
@@ -154,6 +167,7 @@ class AIExaminerApp {
     this.dom.filePreview.classList.add("hidden");
     this.dom.dropzone.classList.remove("hidden");
     this.dom.startBtn.disabled = true;
+    this.restartSession();
   }
   readFileContent(file) {
     const ext = file.name.split(".").pop().toLowerCase();
@@ -181,9 +195,7 @@ class AIExaminerApp {
             resolve(result.value);
           } else
             reject(
-              new Error(
-                "Unsupported file format. Please use .txt, .pdf, or .docx."
-              )
+              new Error("Unsupported format. Please use .txt, .pdf, or .docx.")
             );
         } catch (error) {
           reject(error);
@@ -192,51 +204,6 @@ class AIExaminerApp {
       reader.readAsArrayBuffer(file);
     });
   }
-
-  // --- Core API and Session Logic ---
-  buildSystemPrompt() {
-    const { difficulty, agentMode, currentLevel, language } = this.state;
-
-    // Tentukan instruksi bahasa berdasarkan state
-    const languageInstruction =
-      language === "indonesian"
-        ? "Gunakan HANYA Bahasa Indonesia untuk semua pertanyaan dan feedback."
-        : "Use ONLY English for all questions and feedback.";
-
-    const difficultyMap = {
-      easy: "Ask simple questions: basic definitions and facts.",
-      medium:
-        "Ask intermediate questions: brief analysis, connections between concepts.",
-      hard: "Ask difficult questions: in-depth analysis, concept application, critical evaluation.",
-    };
-    const agentModeMap = {
-      strict:
-        "You are a strict teacher. Ask tough questions, provide harsh critique, no small talk.",
-      friendly:
-        "You are a friendly tutor. Ask questions with a positive tone, always be encouraging.",
-      exam: "You are an exam simulator. Ask questions one by one WITHOUT feedback. Keep score for a final summary.",
-    };
-
-    return `You are AI Examiner. Your task is to test a user's understanding of the provided material.
-  === STRICT RULES ===
-  1. DO NOT answer your own questions.
-  2. Always ask only ONE question at a time.
-  3. ${languageInstruction} 
-  4. Your entire output MUST be a valid JSON object without any markdown formatting: {"feedback": "...", "next_question": "...", "score": 0-100}
-  5. Feedback should be max 2 sentences. If in 'exam' mode, feedback MUST be an empty string ("").
-  6. 'score' is your assessment of the user's last answer (0-100). For the first question, the score must be 0.
-  === DIFFICULTY ===
-  ${
-    difficulty === "adaptive"
-      ? difficultyMap[currentLevel]
-      : difficultyMap[difficulty]
-  }
-  === MODE ===
-  ${agentModeMap[agentMode]}`;
-  }
-
-  // ✅ *** THIS IS THE KEY CHANGE *** ✅
-  // This method now calls YOUR secure proxy, not Groq directly.
   async callGroq(payload) {
     try {
       const response = await fetch("/api/groq-proxy", {
@@ -259,90 +226,284 @@ class AIExaminerApp {
     }
   }
 
-  async getAIResponse(messages) {
-    const payload = {
-      model: this.MODEL,
-      messages,
-      temperature: 0.6,
+  // =============================================================
+  // SETUP PHASE: Diorkestrasi oleh startSession()
+  // =============================================================
+
+  // STEP 1: Pemindaian struktur cepat menggunakan model cepat
+  async quickStructureScan(textSample) {
+    const prompt = `Extract ONLY the chapter titles and numbers from this thesis text. Return a single, valid JSON object like {"chapters": [{"number": 1, "title": "Introduction"}, {"number": 2, "title": "Literature Review"}]}.`;
+    const data = await this.callGroq({
+      model: this.FAST_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.1,
       response_format: { type: "json_object" },
-    };
-    const data = await this.callGroq(payload);
-    if (data.error) {
-      return {
-        feedback: "",
-        next_question: `⚠️ Error: ${data.error.message}`,
-        score: 0,
-      };
-    }
-    const rawContent = data.choices?.[0]?.message?.content || "{}";
-    try {
-      const parsed = JSON.parse(rawContent);
-      if (!parsed.next_question)
-        throw new Error("Missing 'next_question' in AI response.");
-      return parsed;
-    } catch (e) {
-      console.warn("Non-JSON response from AI, using fallback:", rawContent);
-      return { feedback: "", next_question: rawContent, score: 50 };
-    }
+    });
+    if (data.error) throw new Error("Gagal memindai struktur dokumen.");
+    return JSON.parse(data.choices[0].message.content);
   }
 
-  adaptDifficulty(score) {
-    if (this.state.difficulty !== "adaptive") return;
-    if (score > 80 && this.state.currentLevel === "easy")
-      this.state.currentLevel = "medium";
-    else if (score > 80 && this.state.currentLevel === "medium")
-      this.state.currentLevel = "hard";
-    else if (score < 40 && this.state.currentLevel === "hard")
-      this.state.currentLevel = "medium";
-    else if (score < 40 && this.state.currentLevel === "medium")
-      this.state.currentLevel = "easy";
+  // STEP 2: Pemotongan teks cerdas (pemrosesan lokal)
+  smartChunking(fullText, structure) {
+    const chunks = [];
+    if (!structure.chapters || structure.chapters.length === 0)
+      return [{ number: 1, title: "Full Document", content: fullText }];
+
+    for (let i = 0; i < structure.chapters.length; i++) {
+      const chapter = structure.chapters[i];
+      const nextChapter = structure.chapters[i + 1];
+      const pattern = new RegExp(
+        `(BAB|CHAPTER)\\s+${chapter.number}[\\s\\n]`,
+        "i"
+      );
+      const match = fullText.match(pattern);
+      if (!match) continue;
+
+      const startIndex = match.index;
+      let endIndex = fullText.length;
+      if (nextChapter) {
+        const nextPattern = new RegExp(
+          `(BAB|CHAPTER)\\s+${nextChapter.number}[\\s\\n]`,
+          "i"
+        );
+        const nextMatch = fullText
+          .substring(startIndex + match[0].length)
+          .match(nextPattern);
+        if (nextMatch)
+          endIndex = startIndex + match[0].length + nextMatch.index;
+      }
+      chunks.push({
+        number: chapter.number,
+        title: chapter.title,
+        content: fullText.substring(startIndex, endIndex),
+      });
+    }
+    return chunks.length > 0
+      ? chunks
+      : [{ number: 1, title: "Full Document", content: fullText }];
   }
 
-  // --- Main Event Handlers ---
+  // STEP 3: Analisis mendalam paralel
+  async parallelDeepDive(chunks) {
+    const analysisPromises = chunks.map((chunk) => {
+      const perChapterPrompt = `Analyze this chapter for examination purposes. Extract: main argument, key concepts with definitions, methodology details, specific claims/findings, and potential weaknesses. Return a detailed JSON object.`;
+      return this.callGroq({
+        model: this.POWERFUL_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `You are analyzing Chapter ${chunk.number}: ${chunk.title}.`,
+          },
+          {
+            role: "user",
+            content: `CHAPTER CONTENT:\n---\n${chunk.content.substring(
+              0,
+              15000
+            )}\n---\nINSTRUCTIONS:\n${perChapterPrompt}`,
+          },
+        ],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      });
+    });
+    const results = await Promise.all(analysisPromises);
+    return results.map((res, index) => ({
+      chapter: chunks[index].number,
+      title: chunks[index].title,
+      analysis: JSON.parse(res.choices[0].message.content),
+    }));
+  }
+
+  // STEP 4 & 5: Sintesis, Pemetaan Konsep & Identifikasi Kelemahan
+  async synthesizeAndStrategize(chapterAnalyses) {
+    const prompt = `You will perform two tasks based on the provided thesis chapter analyses.
+      ANALYSES: --- ${JSON.stringify(chapterAnalyses, null, 2)} ---
+      TASK 1: SYNTHESIS & CONCEPT MAPPING: Build concept graph (nodes and edges), identify cross-chapter themes, and note any contradictions.
+      TASK 2: STRATEGIC WEAKNESS IDENTIFICATION: Act as a critical thesis examiner. Identify methodological gaps, weak evidence, and alternative perspectives not considered. For each, note its location, severity, and a suggested question angle.
+      Return a single valid JSON object with two top-level keys: "conceptGraph" and "strategicWeaknesses".`;
+    const data = await this.callGroq({
+      model: this.POWERFUL_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+    });
+    if (data.error) throw new Error("Gagal melakukan sintesis dan strategi.");
+    return JSON.parse(data.choices[0].message.content);
+  }
+
+  // STEP 6: Pembangunan indeks hibrida (pemrosesan lokal)
+  buildHybridIndex(chapterAnalyses) {
+    const index = { keywordSearch: new Map() };
+    chapterAnalyses.forEach((item) => {
+      if (!item.analysis) return;
+      const concepts = item.analysis.key_concepts || [];
+      concepts.forEach((concept) => {
+        const term = (
+          typeof concept === "string" ? concept : concept.term
+        )?.toLowerCase();
+        if (term) index.keywordSearch.set(term, item.chapter);
+      });
+    });
+    return index;
+  }
+
+  // --- Alur Sesi Utama ---
   async startSession(e) {
     e.preventDefault();
     if (!this.state.sessionContext) {
-      alert("Please upload a material file first!");
+      alert("Silakan unggah file materi terlebih dahulu!");
       return;
     }
     this.state.sessionActive = true;
-    this.state.difficulty = this.dom.difficultySelect.value;
-    this.state.agentMode = this.dom.agentModeSelect.value;
-    this.state.language = this.dom.languageSelect.value;
-    this.state.currentLevel =
-      this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
     this.dom.materialSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.remove("hidden");
 
-    const messages = [
-      { role: "system", content: this.buildSystemPrompt() },
-      {
-        role: "user",
-        content: `Material:\n---\n${this.state.sessionContext}\n---\n\nPlease ask me the first question.`,
-      },
-    ];
-    const aiResult = await this.getAIResponse(messages);
+    try {
+      this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
+      this.state.structureMap = await this.quickStructureScan(
+        this.state.sessionContext.substring(0, 5000)
+      );
 
-    this.dom.loadingSpinner.classList.add("hidden");
-    this.dom.chatSection.classList.remove("hidden");
-    this.setInputDisabled(false);
-    this.dom.answerInput.focus();
-
-    if (aiResult.next_question) {
-      this.renderMessage("ai", aiResult.next_question);
-      this.state.chatHistory.push({
-        role: "assistant",
-        content: JSON.stringify(aiResult),
-      });
-      this.state.questionsAsked++;
-    } else {
       this.renderMessage(
         "ai",
-        "I'm sorry, I couldn't generate a question. Please try again."
+        `Struktur ditemukan (${this.state.structureMap.chapters.length} bab). Memotong teks... [Langkah 2/5]`
       );
+      this.state.textChunks = this.smartChunking(
+        this.state.sessionContext,
+        this.state.structureMap
+      );
+
+      this.renderMessage(
+        "ai",
+        `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`
+      );
+      this.state.chapterAnalyses = await this.parallelDeepDive(
+        this.state.textChunks
+      );
+
+      this.renderMessage(
+        "ai",
+        "Analisis bab selesai. Mensintesis konsep & strategi... [Langkah 4/5]"
+      );
+      const combinedAnalysis = await this.synthesizeAndStrategize(
+        this.state.chapterAnalyses
+      );
+      this.state.conceptGraph = combinedAnalysis.conceptGraph;
+      this.state.strategicWeaknesses = combinedAnalysis.strategicWeaknesses;
+
+      this.renderMessage("ai", "Membangun indeks pencarian... [Langkah 5/5]");
+      this.state.hybridIndex = this.buildHybridIndex(
+        this.state.chapterAnalyses
+      );
+
+      this.dom.loadingSpinner.classList.add("hidden");
+      this.dom.chatSection.classList.remove("hidden");
+      this.setInputDisabled(false);
+      this.renderMessage(
+        "ai",
+        "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama."
+      );
+
+      // Meminta pertanyaan pertama dari AI
+      const firstQuestionPrompt = `You are a Thesis Examiner. Your personality is '${
+        this.state.agentMode
+      }'. Based on the analysis, ask the very first question to the student.
+      ANALYSIS: ${JSON.stringify(
+        this.state.strategicWeaknesses || this.state.conceptGraph,
+        null,
+        2
+      )}
+      Return a single valid JSON object: {"feedback": "", "next_question": "...", "score": 0}`;
+      const aiResult = await this.callGroq({
+        model: this.POWERFUL_MODEL,
+        messages: [{ role: "user", content: firstQuestionPrompt }],
+        response_format: { type: "json_object" },
+      });
+      const firstQuestion = JSON.parse(aiResult.choices[0].message.content);
+
+      if (firstQuestion.next_question) {
+        this.renderMessage("ai", firstQuestion.next_question);
+        this.state.chatHistory.push({
+          role: "assistant",
+          content: JSON.stringify(firstQuestion),
+        });
+        this.state.questionsAsked++;
+      }
+    } catch (error) {
+      console.error("Setup Phase Failed:", error);
+      this.renderMessage(
+        "ai",
+        `Maaf, terjadi kesalahan selama fase analisis: ${error.message}. Silakan mulai ulang.`
+      );
+      this.dom.loadingSpinner.classList.add("hidden");
+      this.dom.materialSection.classList.remove("hidden");
     }
   }
 
+  // =============================================================
+  // QUERY PHASE: Diorkestrasi oleh sendMessage()
+  // =============================================================
+
+  // STEP 7: Pengambilan konten cerdas
+  async retrieveContent(query) {
+    const cacheKey = query.toLowerCase();
+    if (this.state.queryCache.has(cacheKey)) {
+      console.log(`QUERY: Cache Hit on "${query}"`);
+      return this.state.queryCache.get(cacheKey);
+    }
+
+    // Path A: Direct Index Hit (Pencarian Kata Kunci Sederhana)
+    const queryWords = query.toLowerCase().split(/\s+/);
+    for (const word of queryWords) {
+      if (this.state.hybridIndex.keywordSearch.has(word)) {
+        const chapterNum = this.state.hybridIndex.keywordSearch.get(word);
+        const analysis = this.state.chapterAnalyses.find(
+          (c) => c.chapter === chapterNum
+        );
+        console.log(`QUERY: Index Hit on "${word}"`);
+        const result = {
+          source: `ch${chapterNum}`,
+          content: analysis,
+          type: "Index Hit",
+        };
+        this.state.queryCache.set(cacheKey, result);
+        return result;
+      }
+    }
+
+    // Path B: AI Semantic Fallback
+    console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
+    const prompt = `Given this thesis structure and a user query, which chapters are most relevant? Return a JSON object like {"relevant_chapters": [2, 4]}.`;
+    const data = await this.callGroq({
+      model: this.FAST_MODEL,
+      messages: [
+        { role: "system", content: "You are a semantic router." },
+        {
+          role: "user",
+          content: `STRUCTURE: ${JSON.stringify(
+            this.state.structureMap
+          )}\n\nQUERY: "${query}"`,
+        },
+      ],
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+    });
+    const relevantChapters = JSON.parse(
+      data.choices[0].message.content
+    ).relevant_chapters;
+    const analyses = this.state.chapterAnalyses.filter((c) =>
+      relevantChapters.includes(c.chapter)
+    );
+    const result = {
+      source: `ch${relevantChapters.join(",")}`,
+      content: analyses,
+      type: "AI Fallback",
+    };
+    this.state.queryCache.set(cacheKey, result);
+    return result;
+  }
+
+  // Mengirim pesan dan mengelola alur percakapan
   async sendMessage() {
     if (!this.state.sessionActive || this.dom.sendBtn.disabled) return;
     const answer = this.dom.answerInput.value.trim();
@@ -355,72 +516,77 @@ class AIExaminerApp {
     this.showTypingIndicator(true);
 
     if (this.state.questionsAsked >= this.state.maxQuestions) {
-      const summary = `🎉 Session complete! You answered ${this.state.questionsAsked} out of ${this.state.maxQuestions} questions. Click Restart to try again.`;
-      this.renderMessage("ai", summary);
+      this.renderMessage(
+        "ai",
+        "Sesi ujian selesai. Terima kasih atas partisipasi Anda!"
+      );
       this.showTypingIndicator(false);
+      this.setInputDisabled(false);
       this.state.sessionActive = false;
       return;
     }
 
-    const messages = [
-      { role: "system", content: this.buildSystemPrompt() },
-      {
-        role: "user",
-        content: `Material:\n---\n${this.state.sessionContext}\n---`,
-      },
-      ...this.state.chatHistory,
-    ];
-    const aiResult = await this.getAIResponse(messages);
-    this.adaptDifficulty(aiResult.score);
+    // Mengambil konteks yang relevan berdasarkan jawaban pengguna
+    const context = await this.retrieveContent(answer);
 
-    if (this.state.agentMode !== "exam" && aiResult.feedback) {
-      this.renderMessage("ai", `*Feedback: ${aiResult.feedback}*`);
+    // Membangun prompt untuk Agen Penguji
+    const examinerPrompt = `You are a Thesis Examiner with a '${
+      this.state.agentMode
+    }' personality. A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
+    RICH CONTEXT: --- ${JSON.stringify(context, null, 2)} ---
+    CHAT HISTORY: --- ${JSON.stringify(this.state.chatHistory.slice(-4))} ---
+    Based on ALL the information above, evaluate the user's last answer and formulate your next question.
+    Return a single valid JSON object: {"feedback": "...", "next_question": "...", "score": 0-100}`;
+
+    const aiResult = await this.callGroq({
+      model: this.POWERFUL_MODEL,
+      messages: [{ role: "user", content: examinerPrompt }],
+      response_format: { type: "json_object" },
+    });
+    const response = JSON.parse(aiResult.choices[0].message.content);
+
+    // Merender respons
+    if (this.state.agentMode !== "exam" && response.feedback) {
+      this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
     }
-    if (aiResult.next_question) {
-      this.renderMessage("ai", aiResult.next_question);
+    if (response.next_question) {
+      this.renderMessage("ai", response.next_question);
       this.state.chatHistory.push({
         role: "assistant",
-        content: JSON.stringify(aiResult),
+        content: JSON.stringify(response),
       });
       this.state.questionsAsked++;
-    } else {
-      this.renderMessage(
-        "ai",
-        "Sorry, I encountered an issue. Please try restarting the session."
-      );
-      this.state.sessionActive = false;
     }
+
     this.showTypingIndicator(false);
     this.setInputDisabled(false);
     this.dom.answerInput.focus();
   }
 
   restartSession() {
-    this.state = {
-      ...this.state,
+    Object.assign(this.state, {
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
-      difficulty: "adaptive",
-      currentLevel: "medium",
-      agentMode: "friendly",
       questionsAsked: 0,
       file: null,
-    };
+      structureMap: null,
+      textChunks: [],
+      chapterAnalyses: null,
+      conceptGraph: null,
+      strategicWeaknesses: null,
+      hybridIndex: {},
+      queryCache: new Map(),
+    });
     this.dom.chatBox.innerHTML = "";
     this.dom.chatBox.appendChild(this.dom.typingIndicator);
-    this.removeFile();
     this.dom.materialSection.classList.remove("hidden");
     this.dom.chatSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.add("hidden");
-    this.dom.difficultySelect.value = "adaptive";
-    this.dom.agentModeSelect.value = "friendly";
-    this.dom.languageSelect.value = "indonesian";
     this.setInputDisabled(false);
   }
 }
 
-// Create an instance of the app to run it
 document.addEventListener("DOMContentLoaded", () => {
-  new AIExaminerApp();
+  new ThesisExaminerApp();
 });
