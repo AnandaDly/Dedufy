@@ -8,35 +8,28 @@
 class ThesisExaminerApp {
   constructor() {
     // --- Konfigurasi Model ---
-    // Model cepat untuk tugas-tugas struktural
     this.FAST_MODEL = "llama-3.1-8b-instant";
-    // Model kuat untuk analisis mendalam
     this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
 
     // --- Manajemen State untuk Arsitektur Baru ---
     this.state = {
-      // State sesi & UI
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
       file: null,
       questionsAsked: 0,
       maxQuestions: 10,
-      
-      // Pengaturan kepribadian agen
       difficulty: "adaptive",
       currentLevel: "medium",
       agentMode: "friendly",
       language: "indonesian",
-
-      // Artefak dari fase penyiapan (setup phase)
-      structureMap: null,       // Output dari Langkah 1
-      textChunks: [],           // Output dari Langkah 2
-      chapterAnalyses: null,    // Output dari Langkah 3
-      conceptGraph: null,       // Output dari Langkah 4
-      strategicWeaknesses: null,// Output dari Langkah 5
-      hybridIndex: {},          // Output dari Langkah 6
-      queryCache: new Map(),    // Untuk menyimpan hasil pencarian AI
+      structureMap: null,
+      textChunks: [],
+      chapterAnalyses: null,
+      conceptGraph: null,
+      strategicWeaknesses: null,
+      hybridIndex: {},
+      queryCache: new Map(),
     };
 
     // --- Referensi Elemen DOM ---
@@ -65,7 +58,6 @@ class ThesisExaminerApp {
     this.init();
   }
 
-  // --- Metode Inisialisasi dan UI Dasar (Sebagian besar tidak berubah) ---
   init() {
     this.handleFileSelect = this.handleFileSelect.bind(this);
     this.handleFileDrop = this.handleFileDrop.bind(this);
@@ -114,7 +106,6 @@ class ThesisExaminerApp {
   // SETUP PHASE: Diorkestrasi oleh startSession()
   // =============================================================
 
-  // STEP 1: Pemindaian struktur cepat menggunakan model cepat
   async quickStructureScan(textSample) {
     const prompt = `Extract ONLY the chapter titles and numbers from this thesis text. Return a single, valid JSON object like {"chapters": [{"number": 1, "title": "Introduction"}, {"number": 2, "title": "Literature Review"}]}.`;
     const data = await this.callGroq({ model: this.FAST_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.1, response_format: { type: "json_object" } });
@@ -122,7 +113,6 @@ class ThesisExaminerApp {
     return JSON.parse(data.choices[0].message.content);
   }
 
-  // STEP 2: Pemotongan teks cerdas (pemrosesan lokal)
   smartChunking(fullText, structure) {
     const chunks = [];
     if (!structure.chapters || structure.chapters.length === 0) return [{ number: 1, title: "Full Document", content: fullText }];
@@ -146,7 +136,6 @@ class ThesisExaminerApp {
     return chunks.length > 0 ? chunks : [{ number: 1, title: "Full Document", content: fullText }];
   }
 
-  // STEP 3: Analisis mendalam paralel
   async parallelDeepDive(chunks) {
     const analysisPromises = chunks.map(chunk => {
       const perChapterPrompt = `Analyze this chapter for examination purposes. Extract: main argument, key concepts with definitions, methodology details, specific claims/findings, and potential weaknesses. Return a detailed JSON object.`;
@@ -160,7 +149,6 @@ class ThesisExaminerApp {
     return results.map((res, index) => ({ chapter: chunks[index].number, title: chunks[index].title, analysis: JSON.parse(res.choices[0].message.content) }));
   }
   
-  // STEP 4 & 5: Sintesis, Pemetaan Konsep & Identifikasi Kelemahan
   async synthesizeAndStrategize(chapterAnalyses) {
       const prompt = `You will perform two tasks based on the provided thesis chapter analyses.
       ANALYSES: --- ${JSON.stringify(chapterAnalyses, null, 2)} ---
@@ -172,7 +160,6 @@ class ThesisExaminerApp {
       return JSON.parse(data.choices[0].message.content);
   }
 
-  // STEP 6: Pembangunan indeks hibrida (pemrosesan lokal)
   buildHybridIndex(chapterAnalyses) {
       const index = { keywordSearch: new Map() };
       chapterAnalyses.forEach(item => {
@@ -188,10 +175,15 @@ class ThesisExaminerApp {
       return index;
   }
   
-  // --- Alur Sesi Utama ---
   async startSession(e) {
     e.preventDefault();
     if (!this.state.sessionContext) { alert("Silakan unggah file materi terlebih dahulu!"); return; }
+
+    this.state.difficulty = this.dom.difficultySelect.value;
+    this.state.agentMode = this.dom.agentModeSelect.value;
+    this.state.language = this.dom.languageSelect.value;
+    this.state.currentLevel = this.state.difficulty === 'adaptive' ? 'medium' : this.state.difficulty;
+    
     this.state.sessionActive = true;
     this.dom.materialSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.remove("hidden");
@@ -219,16 +211,7 @@ class ThesisExaminerApp {
       this.setInputDisabled(false);
       this.renderMessage("ai", "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama.");
 
-      // PERBAIKAN: Memasukkan instruksi bahasa ke dalam prompt pertanyaan pertama.
-      const languageInstruction = this.state.language === 'indonesian'
-        ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
-        : "STRICT RULE: You MUST use English for all questions and feedback.";
-
-      const firstQuestionPrompt = `You are a Thesis Examiner. Your personality is '${this.state.agentMode}'.
-      ${languageInstruction}
-      Based on the analysis, ask the very first question to the student.
-      ANALYSIS: ${JSON.stringify(this.state.strategicWeaknesses || this.state.conceptGraph, null, 2)}
-      Return a single valid JSON object: {"feedback": "", "next_question": "...", "score": 0}`;
+      const firstQuestionPrompt = this.buildExaminerPrompt();
       
       const aiResult = await this.callGroq({model: this.POWERFUL_MODEL, messages: [{role: "user", content: firstQuestionPrompt}], response_format: { type: "json_object" } });
       const firstQuestion = JSON.parse(aiResult.choices[0].message.content);
@@ -248,62 +231,90 @@ class ThesisExaminerApp {
   }
 
   // =============================================================
-  // QUERY PHASE: Diorkestrasi oleh sendMessage()
+  // QUERY PHASE & PROMPT ENGINEERING
   // =============================================================
   
-  // STEP 7: Pengambilan konten cerdas
-  async retrieveContent(query) {
+  retrieveContent(query) {
       const cacheKey = query.toLowerCase();
-      if (this.state.queryCache.has(cacheKey)) {
-          console.log(`QUERY: Cache Hit on "${query}"`);
-          return this.state.queryCache.get(cacheKey);
-      }
-
+      if (this.state.queryCache.has(cacheKey)) { return this.state.queryCache.get(cacheKey); }
       const queryWords = query.toLowerCase().split(/\s+/);
       for (const word of queryWords) {
           if (this.state.hybridIndex.keywordSearch.has(word)) {
               const chapterNum = this.state.hybridIndex.keywordSearch.get(word);
               const analysis = this.state.chapterAnalyses.find(c => c.chapter === chapterNum);
-              console.log(`QUERY: Index Hit on "${word}"`);
               const result = { source: `ch${chapterNum}`, content: analysis, type: "Index Hit" };
               this.state.queryCache.set(cacheKey, result);
               return result;
           }
       }
-      
-      console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
-      const prompt = `Given this thesis structure and a user query, which chapters are most relevant? Return a JSON object with a single key "relevant_chapters" which is an array of numbers, for example: {"relevant_chapters": [2, 4]}.
-      STRUCTURE: ${JSON.stringify(this.state.structureMap)}
-      QUERY: "${query}"`;
-      
-      const data = await this.callGroq({
-          model: this.FAST_MODEL,
-          messages: [ { role: "system", content: "You are a semantic router that returns JSON." }, { role: "user", content: prompt } ],
-          temperature: 0.2, response_format: { type: "json_object" },
-      });
+      return { source: 'none', content: null, type: "Index Miss" };
+  }
 
-      if (data.error) {
-          console.error("AI Semantic Fallback failed:", data.error.message);
-          return { source: 'error', content: [], type: "AI Fallback Failed" };
-      }
+  // FUNGSI PROMPT TERPUSAT YANG TELAH DIPERBAIKI
+  buildExaminerPrompt(context = null) {
+    const { language, agentMode, difficulty, currentLevel } = this.state;
+    
+    const languageInstruction = language === 'indonesian'
+      ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
+      : "STRICT RULE: You MUST use English for all questions and feedback.";
 
-      try {
-          const content = data.choices?.[0]?.message?.content;
-          if (!content) { throw new Error("Respons AI tidak memiliki konten."); }
-          const parsedContent = JSON.parse(content);
-          const relevantChapters = parsedContent.relevant_chapters || [];
+    const difficultyInstructions = {
+      easy: "Formulasikan pertanyaan yang langsung dan faktual berdasarkan konteks.",
+      medium: "Formulasikan pertanyaan yang meminta pengguna menghubungkan konsep atau menjelaskan 'mengapa' di balik sebuah fakta dari konteks.",
+      hard: "Formulasikan pertanyaan menantang yang mengkritik asumsi, menanyakan implikasi, atau menyajikan perspektif alternatif berdasarkan konteks."
+    };
+    
+    // PERBAIKAN: Menambahkan instruksi detail untuk setiap mode AI.
+    const agentModeInstructions = {
+      strict: "Anda adalah Penguji Tesis 'Strict Teacher'. Anda bersikap kritis, langsung pada intinya, dan memberikan kritik yang tajam namun membangun. Harapkan jawaban yang presisi dan jangan ragu untuk menantang klaim pengguna.",
+      friendly: "Anda adalah Penguji Tesis 'Friendly Tutor'. Anda bersikap suportif, positif, dan membimbing. Ajukan pertanyaan yang mendalam dengan nada yang memotivasi. Berikan pujian untuk jawaban yang baik sebelum memberikan kritik.",
+      exam: "Anda adalah 'Exam Simulator'. Anda bersikap formal, netral, dan objektif. Ajukan pertanyaan satu per satu TANPA memberikan umpan balik (kunci 'feedback' dalam JSON HARUS string kosong). Tujuannya adalah untuk menguji, bukan mengajar."
+    };
+    
+    const currentDifficulty = difficulty === 'adaptive' ? currentLevel : difficulty;
+    const difficultyInstruction = difficultyInstructions[currentDifficulty];
+    const agentModeInstruction = agentModeInstructions[agentMode];
 
-          const analyses = this.state.chapterAnalyses.filter(c => relevantChapters.includes(c.chapter));
-          const result = { source: `ch${relevantChapters.join(',')}`, content: analyses, type: "AI Fallback" };
-          this.state.queryCache.set(cacheKey, result);
-          return result;
-      } catch (e) {
-          console.error("Gagal mem-parsing respons AI Semantic Fallback:", e);
-          return { source: 'error', content: [], type: "AI Fallback Parse Error" };
-      }
+    let prompt = `You are a Thesis Examiner.
+    ---
+    **PERATURAN ANDA**
+    1. **Kepribadian:** ${agentModeInstruction}
+    2. **Bahasa:** ${languageInstruction}
+    3. **Tingkat Kesulitan:** ${difficultyInstruction}
+    ---
+    `;
+
+    if (context) {
+        prompt += `A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
+        RICH CONTEXT: --- ${JSON.stringify(context, null, 2)} ---
+        CHAT HISTORY: --- ${JSON.stringify(this.state.chatHistory.slice(-4))} ---
+        Based on ALL the information above, evaluate the user's last answer and formulate your next question.
+        Return a single valid JSON object: {"feedback": "...", "next_question": "...", "score": 0-100}`;
+    } else {
+        prompt += `Based on the analysis, ask the very first question to the student.
+        ANALYSIS: ${JSON.stringify(this.state.strategicWeaknesses || this.state.conceptGraph, null, 2)}
+        Return a single valid JSON object: {"feedback": "", "next_question": "...", "score": 0}`;
+    }
+    return prompt;
   }
   
-  // Mengirim pesan dan mengelola alur percakapan
+  adaptDifficulty(score) {
+    if (this.state.difficulty !== "adaptive") return;
+    if (score > 80 && this.state.currentLevel === "easy") {
+        this.state.currentLevel = "medium";
+        console.log("Difficulty adapted to: medium");
+    } else if (score > 80 && this.state.currentLevel === "medium") {
+        this.state.currentLevel = "hard";
+        console.log("Difficulty adapted to: hard");
+    } else if (score < 40 && this.state.currentLevel === "hard") {
+        this.state.currentLevel = "medium";
+        console.log("Difficulty adapted to: medium");
+    } else if (score < 40 && this.state.currentLevel === "medium") {
+        this.state.currentLevel = "easy";
+        console.log("Difficulty adapted to: easy");
+    }
+  }
+
   async sendMessage() {
     if (!this.state.sessionActive || this.dom.sendBtn.disabled) return;
     const answer = this.dom.answerInput.value.trim();
@@ -323,23 +334,10 @@ class ThesisExaminerApp {
       return;
     }
 
-    const context = await this.retrieveContent(answer);
-    
-    // PERBAIKAN: Memasukkan instruksi bahasa ke dalam prompt penguji.
-    const languageInstruction = this.state.language === 'indonesian'
-      ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
-      : "STRICT RULE: You MUST use English for all questions and feedback.";
-
-    const examinerPrompt = `You are a Thesis Examiner with a '${this.state.agentMode}' personality. 
-    ${languageInstruction}
-    A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
-    RICH CONTEXT: --- ${JSON.stringify(context, null, 2)} ---
-    CHAT HISTORY: --- ${JSON.stringify(this.state.chatHistory.slice(-4))} ---
-    Based on ALL the information above, evaluate the user's last answer and formulate your next question.
-    Return a single valid JSON object: {"feedback": "...", "next_question": "...", "score": 0-100}`;
+    const context = this.retrieveContent(answer);
+    const examinerPrompt = this.buildExaminerPrompt(context);
 
     const aiResult = await this.callGroq({ model: this.POWERFUL_MODEL, messages: [{ role: "user", content: examinerPrompt }], response_format: { type: "json_object" }});
-    // Menambahkan penanganan error jika panggilan AI gagal
     if (aiResult.error) {
         this.renderMessage("ai", `Maaf, terjadi kesalahan: ${aiResult.error.message}`);
         this.showTypingIndicator(false);
@@ -347,8 +345,10 @@ class ThesisExaminerApp {
         return;
     }
     const response = JSON.parse(aiResult.choices[0].message.content);
+    
+    this.adaptDifficulty(response.score);
 
-    // Merender respons
+    // Pengecekan agentMode tetap di sini untuk memastikan tidak ada feedback dalam mode 'exam'.
     if (this.state.agentMode !== "exam" && response.feedback) {
       this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
     }
@@ -365,9 +365,10 @@ class ThesisExaminerApp {
 
   restartSession() {
     Object.assign(this.state, {
-      sessionContext: "", chatHistory: [], sessionActive: false, questionsAsked: 0, file: null,
-      structureMap: null, textChunks: [], chapterAnalyses: null, conceptGraph: null,
-      strategicWeaknesses: null, hybridIndex: {}, queryCache: new Map()
+        sessionContext: "", chatHistory: [], sessionActive: false, questionsAsked: 0, file: null,
+        difficulty: "adaptive", currentLevel: "medium", agentMode: "friendly", language: "indonesian",
+        structureMap: null, textChunks: [], chapterAnalyses: null, conceptGraph: null,
+        strategicWeaknesses: null, hybridIndex: {}, queryCache: new Map()
     });
     this.dom.chatBox.innerHTML = "";
     this.dom.chatBox.appendChild(this.dom.typingIndicator);
@@ -375,6 +376,9 @@ class ThesisExaminerApp {
     this.dom.chatSection.classList.add("hidden");
     this.dom.loadingSpinner.classList.add("hidden");
     this.setInputDisabled(false);
+    this.dom.difficultySelect.value = "adaptive";
+    this.dom.agentModeSelect.value = "friendly";
+    this.dom.languageSelect.value = "indonesian";
   }
 }
 
