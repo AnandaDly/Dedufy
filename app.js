@@ -166,7 +166,6 @@ class ThesisExaminerApp {
   }
 
   loadSessionFromStorage() {
-    // ... (sebagian besar fungsi ini tetap sama)
     try {
       const savedStateJSON = localStorage.getItem(this.SESSION_STORAGE_KEY);
       if (savedStateJSON) {
@@ -186,12 +185,17 @@ class ThesisExaminerApp {
         if (this.state.sessionActive) {
           // --- REFACTOR: Gunakan transisi CSS ---
           this.dom.materialSection.classList.add("fade-slide-exit-active");
+          this.dom.materialSection.classList.remove("fade-slide-enter-active");
           setTimeout(() => {
             this.dom.materialSection.classList.add("hidden");
+            this.dom.materialSection.classList.remove("fade-slide-exit-active");
+
             this.dom.loadingSpinner.classList.add("hidden");
+
             this.dom.chatSection.classList.remove("hidden", "fade-slide-enter");
+            this.dom.chatSection.classList.remove("fade-slide-exit-active");
             this.dom.chatSection.classList.add("fade-slide-enter-active");
-          }, 400); // 400ms = durasi transisi
+          }, 500); // 500ms = durasi transisi
           // --- END REFACTOR ---
 
           this.renderMessage(
@@ -651,45 +655,49 @@ class ThesisExaminerApp {
 
     // --- REFACTOR: Gunakan transisi CSS ---
     this.dom.materialSection.classList.add("fade-slide-exit-active");
+    this.dom.materialSection.classList.remove("fade-slide-enter-active");
     setTimeout(() => {
       this.dom.materialSection.classList.add("hidden");
+      this.dom.materialSection.classList.remove("fade-slide-exit-active");
+
       this.dom.loadingSpinner.classList.remove("hidden");
+      this.dom.loadingSpinner.classList.remove("fade-slide-exit-active");
       this.dom.loadingSpinner.classList.add("fade-slide-enter-active");
-    }, 400); // 400ms = durasi transisi di CSS
+    }, 500); // 500ms = durasi transisi di CSS
     // --- END REFACTOR ---
 
     try {
-      this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
+      // this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
       this.state.structureMap = await this.semanticChunking(
         this.state.sessionContext.substring(0, 10000)
       );
-      this.renderMessage(
-        "ai",
-        `Struktur ditemukan (${
-          this.state.structureMap?.chapters?.length || 0
-        } bab). Memotong teks... [Langkah 2/5]`
-      );
+      // this.renderMessage(
+      //   "ai",
+      //   `Struktur ditemukan (${
+      //     this.state.structureMap?.chapters?.length || 0
+      //   } bab). Memotong teks... [Langkah 2/5]`
+      // );
       this.state.textChunks = this.smartChunking(
         this.state.sessionContext,
         this.state.structureMap
       );
-      this.renderMessage(
-        "ai",
-        `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`
-      );
+      // this.renderMessage(
+      //   "ai",
+      //   `Menganalisis ${this.state.textChunks.length} bab secara paralel... [Langkah 3/5]`
+      // );
       this.state.chapterAnalyses = await this.parallelDeepDive(
         this.state.textChunks
       );
-      this.renderMessage(
-        "ai",
-        "Analisis bab selesai. Mensintesis & menyusun strategi... [Langkah 4/5]"
-      );
+      // this.renderMessage(
+      //   "ai",
+      //   "Analisis bab selesai. Mensintesis & menyusun strategi... [Langkah 4/5]"
+      // );
       const combinedAnalysis = await this.synthesizeAndStrategize(
         this.state.chapterAnalyses
       );
       this.state.conceptGraph = combinedAnalysis.conceptGraph;
       this.state.strategicWeaknesses = combinedAnalysis.strategicWeaknesses;
-      this.renderMessage("ai", "Membangun indeks pencarian... [Langkah 5/5]");
+      // this.renderMessage("ai", "Membangun indeks pencarian... [Langkah 5/5]");
       this.state.hybridIndex = this.buildHybridIndex(
         this.state.chapterAnalyses
       );
@@ -699,9 +707,12 @@ class ThesisExaminerApp {
       this.dom.loadingSpinner.classList.add("fade-slide-exit-active");
       setTimeout(() => {
         this.dom.loadingSpinner.classList.add("hidden");
+        this.dom.loadingSpinner.classList.remove("fade-slide-exit-active");
+
         this.dom.chatSection.classList.remove("hidden", "fade-slide-enter");
+        this.dom.chatSection.classList.remove("fade-slide-exit-active");
         this.dom.chatSection.classList.add("fade-slide-enter-active");
-      }, 400);
+      }, 500);
       // --- END REFACTOR ---
 
       this.setInputDisabled(false);
@@ -748,8 +759,10 @@ class ThesisExaminerApp {
         "fade-slide-enter-active",
         "fade-slide-exit-active"
       );
+
+      this.dom.materialSection.classList.remove("hidden");
       this.dom.materialSection.classList.remove(
-        "hidden",
+        "fade-slide-enter-active",
         "fade-slide-exit-active"
       );
       this.dom.materialSection.classList.add("fade-slide-enter-active");
@@ -1026,14 +1039,20 @@ class ThesisExaminerApp {
       this.dom.chatBox.appendChild(this.dom.typingIndicator);
 
       // --- REFACTOR: Gunakan transisi CSS ---
+      this.dom.chatSection.classList.remove("fade-slide-enter-active");
       this.dom.chatSection.classList.add("fade-slide-exit-active");
       this.dom.loadingSpinner.classList.add("hidden"); // Pastikan spinner mati
+      this.dom.loadingSpinner.classList.remove(
+        "fade-slide-enter-active",
+        "fade-slide-exit-active"
+      );
       setTimeout(() => {
         this.dom.chatSection.classList.add("hidden");
         this.dom.chatSection.classList.remove("fade-slide-exit-active");
         this.dom.materialSection.classList.remove("hidden", "fade-slide-enter");
+        this.dom.materialSection.classList.remove("fade-slide-exit-active");
         this.dom.materialSection.classList.add("fade-slide-enter-active");
-      }, 400);
+      }, 500);
       // --- END REFACTOR ---
 
       this.setInputDisabled(false);
