@@ -1,7 +1,7 @@
 // =======================================================================
-// AI THESIS EXAMINER - PRODUCTION-READY ARCHITECTURE V3.1 (PATCHED)
-// Perbaikan: #1-Async, #2-Timeout, #3-FullAnalysis, #5-LRUCache,
-//            #6-HistoryLimit, #7-UUID, #8-RegexFlex
+// AI THESIS EXAMINER - PRODUCTION-READY ARCHITECTURE V4.0 (UI Integrated)
+// Refactor: Mengintegrasikan logika UI dari app.html ke dalam kelas,
+//           menggunakan transisi CSS, dan mengkonsolidasikan DOM.
 // =======================================================================
 class ThesisExaminerApp {
   constructor() {
@@ -10,13 +10,13 @@ class ThesisExaminerApp {
     this.POWERFUL_MODEL = "llama-3.3-70b-versatile";
     this.MAX_FILE_SIZE_MB = 5;
     this.MAX_CACHE_SIZE = 50;
-    // --- PERBAIKAN #6: Tambahkan batas maksimal untuk riwayat chat ---
     this.MAX_HISTORY_LENGTH = 50;
     this.SESSION_STORAGE_KEY = "thesisExaminerSession";
 
     // --- Manajemen State ---
     this.state = {
-      sessionId: null, // ID unik untuk setiap sesi file
+      // ... (state tetap sama) ...
+      sessionId: null,
       sessionContext: "",
       chatHistory: [],
       sessionActive: false,
@@ -27,20 +27,19 @@ class ThesisExaminerApp {
       currentLevel: "medium",
       agentMode: "friendly",
       language: "indonesian",
-      scoreHistory: [], // Untuk adaptasi kesulitan berbasis tren
-      // Artefak analisis
+      scoreHistory: [],
       structureMap: null,
       textChunks: [],
       chapterAnalyses: null,
       conceptGraph: null,
       strategicWeaknesses: null,
       hybridIndex: {},
-      // --- PERBAIKAN #5: Map tetap digunakan, logika LRU diimplementasikan saat akses ---
       queryCache: new Map(),
     };
 
-    // --- Referensi Elemen DOM ---
+    // --- REFACTOR: Referensi Elemen DOM (DILENGKAPI) ---
     this.dom = {
+      // Elemen dari form upload
       dropzone: document.getElementById("dropzone"),
       fileInput: document.getElementById("fileInput"),
       filePreview: document.getElementById("file-preview"),
@@ -52,14 +51,32 @@ class ThesisExaminerApp {
       languageSelect: document.getElementById("languageSelect"),
       uploadForm: document.getElementById("upload-form"),
       startBtn: document.getElementById("startBtn"),
+
+      // Elemen Kontainer Utama
       materialSection: document.getElementById("material-section"),
-      loadingSpinner: document.getElementById("loading-spinner"),
+      loadingSpinner: document.getElementById("loading-spinner"), // Elemen baru dari HTML
       chatSection: document.getElementById("chat-section"),
+
+      // Elemen Chat
       chatBox: document.getElementById("chatBox"),
       answerInput: document.getElementById("answerInput"),
       sendBtn: document.getElementById("sendBtn"),
       restartBtn: document.getElementById("restartBtn"),
       typingIndicator: document.getElementById("typing-indicator"),
+
+      // --- BARU: Elemen dari app.html ---
+      // Header
+      toggleViewerBtn: document.getElementById("toggleViewerBtn"),
+      toggleViewerIcon: document.getElementById("toggleViewerIcon"),
+      toggleViewerText: document.getElementById("toggleViewerText"),
+      // Document Viewer (Panel Kiri)
+      docViewer: document.getElementById("doc-viewer"),
+      docPreviewFrame: document.getElementById("docPreviewFrame"),
+      docTextPreview: document.getElementById("docTextPreview"),
+      // Header Sesi Chat (Panel Kanan)
+      sessionMode: document.getElementById("sessionMode"),
+      sessionDifficulty: document.getElementById("sessionDifficulty"),
+      sessionFilename: document.getElementById("sessionFilename"),
     };
 
     this.init();
@@ -96,13 +113,48 @@ class ThesisExaminerApp {
       }
     });
 
+    // --- BARU: Listener untuk tombol toggle viewer dipindahkan ke sini ---
+    this.dom.toggleViewerBtn.addEventListener("click", () =>
+      this.toggleDocumentViewer()
+    );
+
     this.loadSessionFromStorage();
   }
 
+  // --- BARU: Method untuk mengontrol tombol show/hide viewer ---
+  toggleDocumentViewer() {
+    const hidden = this.dom.docViewer.classList.toggle("hidden");
+    this.dom.toggleViewerIcon.textContent = hidden ? "📄" : "👁️";
+    this.dom.toggleViewerText.textContent = hidden
+      ? "Show Document"
+      : "Hide Document";
+  }
+
+  // --- BARU: Method untuk mengisi panel viewer ---
+  updateDocumentViewer(file, textContent) {
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if (ext === "pdf") {
+      const url = URL.createObjectURL(file);
+      this.dom.docPreviewFrame.src = url;
+      this.dom.docPreviewFrame.classList.remove("hidden");
+      this.dom.docTextPreview.classList.add("hidden");
+    } else {
+      // Untuk .txt dan .docx, tampilkan teks yang sudah diekstrak
+      this.dom.docTextPreview.textContent =
+        textContent || "Memuat pratinjau...";
+      this.dom.docTextPreview.classList.remove("hidden");
+      this.dom.docPreviewFrame.classList.add("hidden");
+    }
+
+    this.dom.docViewer.classList.remove("hidden");
+    this.dom.toggleViewerBtn.classList.remove("hidden");
+  }
+
   saveSessionToStorage() {
+    // ... (fungsi ini tetap sama)
     try {
       const stateToSave = { ...this.state, sessionContext: "" };
-      // Ubah Map menjadi array untuk serialisasi JSON
       stateToSave.queryCache = Array.from(this.state.queryCache.entries());
       localStorage.setItem(
         this.SESSION_STORAGE_KEY,
@@ -114,18 +166,17 @@ class ThesisExaminerApp {
   }
 
   loadSessionFromStorage() {
+    // ... (sebagian besar fungsi ini tetap sama)
     try {
       const savedStateJSON = localStorage.getItem(this.SESSION_STORAGE_KEY);
       if (savedStateJSON) {
+        // ... (parsing state) ...
         const savedState = JSON.parse(savedStateJSON);
-        
-        // Ubah array cache kembali menjadi Map
         if (Array.isArray(savedState.queryCache)) {
-            savedState.queryCache = new Map(savedState.queryCache);
+          savedState.queryCache = new Map(savedState.queryCache);
         } else {
-            savedState.queryCache = new Map();
+          savedState.queryCache = new Map();
         }
-
         Object.assign(this.state, {
           ...savedState,
           file: null,
@@ -133,9 +184,15 @@ class ThesisExaminerApp {
         });
 
         if (this.state.sessionActive) {
-          this.dom.materialSection.classList.add("hidden");
-          this.dom.chatSection.classList.remove("hidden");
-          this.dom.loadingSpinner.classList.add("hidden");
+          // --- REFACTOR: Gunakan transisi CSS ---
+          this.dom.materialSection.classList.add("fade-slide-exit-active");
+          setTimeout(() => {
+            this.dom.materialSection.classList.add("hidden");
+            this.dom.loadingSpinner.classList.add("hidden");
+            this.dom.chatSection.classList.remove("hidden", "fade-slide-enter");
+            this.dom.chatSection.classList.add("fade-slide-enter-active");
+          }, 400); // 400ms = durasi transisi
+          // --- END REFACTOR ---
 
           this.renderMessage(
             "ai",
@@ -144,6 +201,19 @@ class ThesisExaminerApp {
           this.dom.filePreview.classList.add("hidden");
           this.dom.dropzone.classList.remove("hidden");
 
+          // --- BARU: Pulihkan info header ---
+          this.dom.sessionFilename.textContent = "File needs re-upload";
+          this.dom.sessionMode.textContent =
+            this.dom.agentModeSelect.querySelector(
+              `option[value="${this.state.agentMode}"]`
+            )?.textContent || this.state.agentMode;
+          this.dom.sessionDifficulty.textContent =
+            this.dom.difficultySelect.querySelector(
+              `option[value="${this.state.difficulty}"]`
+            )?.textContent || this.state.difficulty;
+          // --- END BARU ---
+
+          // ... (merender ulang riwayat chat) ...
           this.state.chatHistory.forEach((msg) => {
             if (msg.role === "user") {
               this.renderMessage("user", msg.content);
@@ -169,6 +239,7 @@ class ThesisExaminerApp {
   }
 
   renderMessage(role, content) {
+    // ... (fungsi ini tetap sama)
     const messageEl = document.createElement("div");
     const isAI = role === "ai";
     const avatar = isAI
@@ -190,24 +261,29 @@ class ThesisExaminerApp {
   }
 
   showTypingIndicator(show) {
+    // ... (fungsi ini tetap sama)
     this.dom.typingIndicator.classList.toggle("hidden", !show);
     if (show) this.dom.chatBox.scrollTop = this.dom.chatBox.scrollHeight;
   }
   setInputDisabled(disabled) {
+    // ... (fungsi ini tetap sama)
     this.dom.answerInput.disabled = disabled;
     this.dom.sendBtn.disabled = disabled;
     this.dom.sendBtn.classList.toggle("opacity-50", disabled);
     this.dom.sendBtn.classList.toggle("cursor-not-allowed", disabled);
   }
   handleDragOver(e) {
+    // ... (fungsi ini tetap sama)
     e.preventDefault();
     e.currentTarget.classList.add("border-teal-400", "bg-teal-50");
   }
   handleDragLeave(e) {
+    // ... (fungsi ini tetap sama)
     e.preventDefault();
     e.currentTarget.classList.remove("border-teal-400", "bg-teal-50");
   }
   handleFileDrop(e) {
+    // ... (fungsi ini tetap sama)
     e.preventDefault();
     this.handleDragLeave({
       preventDefault: () => {},
@@ -216,10 +292,12 @@ class ThesisExaminerApp {
     if (e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]);
   }
   handleFileSelect(e) {
+    // ... (fungsi ini tetap sama)
     if (e.target.files.length) this.handleFile(e.target.files[0]);
   }
 
   async handleFile(file) {
+    // ... (validasi ukuran file) ...
     if (file.size > this.MAX_FILE_SIZE_MB * 1024 * 1024) {
       this.renderMessage(
         "ai",
@@ -234,7 +312,6 @@ class ThesisExaminerApp {
       this.setInputDisabled(false);
     } else {
       this.restartSession(false);
-      // --- PERBAIKAN #7: Gunakan crypto.randomUUID() untuk ID sesi yang unik secara global ---
       this.state.sessionId = crypto.randomUUID();
     }
 
@@ -244,8 +321,14 @@ class ThesisExaminerApp {
     this.dom.filePreview.classList.remove("hidden");
     this.dom.dropzone.classList.add("hidden");
     this.dom.startBtn.disabled = false;
+
+    // --- REFACTOR: Logika viewer dipanggil SETELAH file dibaca ---
     try {
       this.state.sessionContext = await this.readFileContent(file);
+
+      // --- BARU: Panggil update viewer dengan konten yang sudah dibaca ---
+      this.updateDocumentViewer(file, this.state.sessionContext);
+      // --- END BARU ---
     } catch (err) {
       this.renderMessage("ai", `❌ Error membaca file: ${err.message}`);
       this.removeFile();
@@ -253,6 +336,7 @@ class ThesisExaminerApp {
   }
 
   removeFile() {
+    // ... (fungsi ini tetap sama)
     this.state.file = null;
     this.state.sessionContext = "";
     this.dom.fileInput.value = "";
@@ -261,7 +345,9 @@ class ThesisExaminerApp {
     this.dom.startBtn.disabled = true;
     this.restartSession();
   }
+
   readFileContent(file) {
+    // ... (fungsi ini tetap sama)
     const ext = file.name.split(".").pop().toLowerCase();
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
@@ -296,8 +382,9 @@ class ThesisExaminerApp {
       reader.readAsArrayBuffer(file);
     });
   }
-  
+
   async callGroqWithRetry(payload, retries = 3, delay = 1000, timeout = 30000) {
+    // ... (fungsi ini tetap sama)
     for (let i = 0; i < retries; i++) {
       try {
         const controller = new AbortController();
@@ -327,8 +414,10 @@ class ThesisExaminerApp {
         }
         return await response.json();
       } catch (err) {
-        if (err.name === 'AbortError') {
-          console.warn(`Percobaan API gagal karena timeout (${timeout / 1000} detik).`);
+        if (err.name === "AbortError") {
+          console.warn(
+            `Percobaan API gagal karena timeout (${timeout / 1000} detik).`
+          );
           if (i === retries - 1) {
             return {
               error: {
@@ -337,13 +426,13 @@ class ThesisExaminerApp {
             };
           }
         } else if (i === retries - 1) {
-            return {
-              error: {
-                message: `Gagal setelah ${retries} kali percobaan: ${err.message}`,
-              },
-            };
+          return {
+            error: {
+              message: `Gagal setelah ${retries} kali percobaan: ${err.message}`,
+            },
+          };
         }
-        
+
         console.warn(
           `Percobaan API gagal (${i + 1}/${retries}). Mencoba lagi dalam ${
             delay / 1000
@@ -356,6 +445,7 @@ class ThesisExaminerApp {
   }
 
   safeJsonParse(jsonString) {
+    // ... (fungsi ini tetap sama)
     try {
       return JSON.parse(jsonString);
     } catch (e) {
@@ -364,12 +454,12 @@ class ThesisExaminerApp {
     }
   }
 
+  // ... (Metode analisis: semanticChunking, smartChunking, parallelDeepDive, synthesizeAndStrategize, buildHybridIndex tetap sama) ...
   async semanticChunking(textSample) {
     const prompt = `Your task is to act as a document structure analyzer. Read the provided text and identify the main semantic sections or chapters.
     Return a valid JSON object with a single key "chapters", which is an array of objects. Each object should have a "number" and a "title".
     Example: {"chapters": [{"number": 1, "title": "Introduction"}, {"number": 2, "title": "Literature Review"}]}.
     If you cannot identify clear chapters, return an empty array.`;
-
     const data = await this.callGroqWithRetry({
       model: this.FAST_MODEL,
       messages: [
@@ -383,7 +473,6 @@ class ThesisExaminerApp {
     });
     if (data.error)
       throw new Error(`Gagal menganalisis struktur: ${data.error.message}`);
-
     const content = this.safeJsonParse(data.choices?.[0]?.message?.content);
     if (!content || !Array.isArray(content.chapters)) {
       console.warn(
@@ -393,7 +482,6 @@ class ThesisExaminerApp {
     }
     return content;
   }
-
   smartChunking(fullText, structure) {
     const chunks = [];
     if (!structure.chapters || structure.chapters.length === 0) {
@@ -402,23 +490,22 @@ class ThesisExaminerApp {
     for (let i = 0; i < structure.chapters.length; i++) {
       const chapter = structure.chapters[i];
       if (!chapter || typeof chapter.number === "undefined") continue;
-
       const nextChapter = structure.chapters[i + 1];
-      // --- PERBAIKAN #8: Regex dibuat lebih fleksibel untuk menangani format judul yang berbeda ---
-      // Mencari 'BAB', 'CHAPTER', 'BAGIAN' diikuti oleh angka Arab atau Romawi.
       const pattern = new RegExp(
-        `(BAB|CHAPTER|BAGIAN)\\s+(?:${chapter.number}|${toRoman(chapter.number)})[\\s\\.\\n]`,
+        `(BAB|CHAPTER|BAGIAN)\\s+(?:${chapter.number}|${toRoman(
+          chapter.number
+        )})[\\s\\.\\n]`,
         "i"
       );
       const match = fullText.match(pattern);
-
       if (!match) continue;
-
       const startIndex = match.index;
       let endIndex = fullText.length;
       if (nextChapter && typeof nextChapter.number !== "undefined") {
         const nextPattern = new RegExp(
-           `(BAB|CHAPTER|BAGIAN)\\s+(?:${nextChapter.number}|${toRoman(nextChapter.number)})[\\s\\.\\n]`,
+          `(BAB|CHAPTER|BAGIAN)\\s+(?:${nextChapter.number}|${toRoman(
+            nextChapter.number
+          )})[\\s\\.\\n]`,
           "i"
         );
         const nextMatch = fullText
@@ -434,21 +521,32 @@ class ThesisExaminerApp {
         content: fullText.substring(startIndex, endIndex),
       });
     }
-    // Tambahkan helper function untuk konversi ke angka romawi jika diperlukan
     function toRoman(num) {
-        const roman = {M:1000,CM:900,D:500,CD:400,C:100,XC:90,L:50,XL:40,X:10,IX:9,V:5,IV:4,I:1};
-        let str = '';
-        for (let i of Object.keys(roman)) {
-            let q = Math.floor(num / roman[i]);
-            num -= q * roman[i];
-            str += i.repeat(q);
-        }
-        return str;
+      const roman = {
+        M: 1000,
+        CM: 900,
+        D: 500,
+        CD: 400,
+        C: 100,
+        XC: 90,
+        L: 50,
+        XL: 40,
+        X: 10,
+        IX: 9,
+        V: 5,
+        IV: 4,
+        I: 1,
+      };
+      let str = "";
+      for (let i of Object.keys(roman)) {
+        let q = Math.floor(num / roman[i]);
+        num -= q * roman[i];
+        str += i.repeat(q);
+      }
+      return str;
     }
-
     return chunks;
   }
-
   async parallelDeepDive(chunks) {
     const analysisPromises = chunks.map((chunk) => {
       const perChapterPrompt = `Analyze this chapter. Extract: main argument, key concepts, methodology, findings, and potential weaknesses. Return a detailed JSON object.`;
@@ -461,7 +559,6 @@ class ThesisExaminerApp {
           },
           {
             role: "user",
-            // --- PERBAIKAN #3: Hapus .substring() untuk mengirim seluruh konten bab ---
             content: `CONTENT:\n---\n${chunk.content}\n---\nINSTRUCTIONS:\n${perChapterPrompt}`,
           },
         ],
@@ -487,7 +584,6 @@ class ThesisExaminerApp {
       };
     });
   }
-
   async synthesizeAndStrategize(chapterAnalyses) {
     const prompt = `TASK 1: SYNTHESIS: Build a concept graph, identify cross-chapter themes. TASK 2: STRATEGY: Identify methodological gaps, weak evidence, and alternative perspectives. Return a single valid JSON object with keys "conceptGraph" and "strategicWeaknesses".`;
     const data = await this.callGroqWithRetry({
@@ -510,11 +606,9 @@ class ThesisExaminerApp {
     if (!content) throw new Error("Respons sintesis tidak valid dari AI.");
     return content;
   }
-
   buildHybridIndex(chapterAnalyses) {
     const index = { keywordSearch: new Map() };
     if (!Array.isArray(chapterAnalyses)) return index;
-
     chapterAnalyses.forEach((item) => {
       if (!item?.analysis) return;
       const concepts = item.analysis.key_concepts;
@@ -529,6 +623,7 @@ class ThesisExaminerApp {
     });
     return index;
   }
+  // --- END METODE ANALISIS ---
 
   async startSession(e) {
     e.preventDefault();
@@ -537,15 +632,31 @@ class ThesisExaminerApp {
       return;
     }
 
+    // Mengatur state dari pilihan dropdown
     this.state.difficulty = this.dom.difficultySelect.value;
     this.state.agentMode = this.dom.agentModeSelect.value;
     this.state.language = this.dom.languageSelect.value;
     this.state.currentLevel =
       this.state.difficulty === "adaptive" ? "medium" : this.state.difficulty;
 
+    // --- BARU: Update UI header chat SEKARANG ---
+    this.dom.sessionFilename.textContent = this.state.file.name;
+    this.dom.sessionMode.textContent =
+      this.dom.agentModeSelect.selectedOptions[0].textContent;
+    this.dom.sessionDifficulty.textContent =
+      this.dom.difficultySelect.selectedOptions[0].textContent;
+    // --- END BARU ---
+
     this.state.sessionActive = true;
-    this.dom.materialSection.classList.add("hidden");
-    this.dom.loadingSpinner.classList.remove("hidden");
+
+    // --- REFACTOR: Gunakan transisi CSS ---
+    this.dom.materialSection.classList.add("fade-slide-exit-active");
+    setTimeout(() => {
+      this.dom.materialSection.classList.add("hidden");
+      this.dom.loadingSpinner.classList.remove("hidden");
+      this.dom.loadingSpinner.classList.add("fade-slide-enter-active");
+    }, 400); // 400ms = durasi transisi di CSS
+    // --- END REFACTOR ---
 
     try {
       this.renderMessage("ai", "Memulai analisis... [Langkah 1/5]");
@@ -583,13 +694,23 @@ class ThesisExaminerApp {
         this.state.chapterAnalyses
       );
 
-      this.dom.loadingSpinner.classList.add("hidden");
-      this.dom.chatSection.classList.remove("hidden");
+      // --- REFACTOR: Transisi dari Spinner ke Chat ---
+      this.dom.loadingSpinner.classList.remove("fade-slide-enter-active");
+      this.dom.loadingSpinner.classList.add("fade-slide-exit-active");
+      setTimeout(() => {
+        this.dom.loadingSpinner.classList.add("hidden");
+        this.dom.chatSection.classList.remove("hidden", "fade-slide-enter");
+        this.dom.chatSection.classList.add("fade-slide-enter-active");
+      }, 400);
+      // --- END REFACTOR ---
+
       this.setInputDisabled(false);
       this.renderMessage(
         "ai",
         "Analisis selesai. Sistem siap. Saya akan memulai dengan pertanyaan pertama."
       );
+
+      // ... (Logika mengambil pertanyaan pertama tetap sama) ...
       const firstQuestionPrompt = this.buildExaminerPrompt();
       const aiResult = await this.callGroqWithRetry({
         model: this.POWERFUL_MODEL,
@@ -603,14 +724,14 @@ class ThesisExaminerApp {
 
       if (firstQuestion?.next_question) {
         this.renderMessage("ai", firstQuestion.next_question);
-        
-        const assistantMessage = { role: "assistant", content: JSON.stringify(firstQuestion) };
+        const assistantMessage = {
+          role: "assistant",
+          content: JSON.stringify(firstQuestion),
+        };
         this.state.chatHistory.push(assistantMessage);
-        // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
         if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-            this.state.chatHistory.shift();
+          this.state.chatHistory.shift();
         }
-
         this.state.questionsAsked++;
       }
       this.saveSessionToStorage();
@@ -620,22 +741,33 @@ class ThesisExaminerApp {
         "ai",
         `❌ **Error Fatal:** ${error.message}. Sesi tidak dapat dimulai. Silakan mulai ulang.`
       );
+
+      // --- REFACTOR: Kembalikan ke layar awal jika gagal ---
       this.dom.loadingSpinner.classList.add("hidden");
+      this.dom.loadingSpinner.classList.remove(
+        "fade-slide-enter-active",
+        "fade-slide-exit-active"
+      );
+      this.dom.materialSection.classList.remove(
+        "hidden",
+        "fade-slide-exit-active"
+      );
+      this.dom.materialSection.classList.add("fade-slide-enter-active");
+      // --- END REFACTOR ---
+
       this.setInputDisabled(true);
     }
   }
 
   async retrieveContent(query) {
+    // ... (fungsi ini tetap sama)
     const cacheKey = query.toLowerCase();
-    // --- PERBAIKAN #5: Implementasi logika LRU pada cache hit ---
     if (this.state.queryCache.has(cacheKey)) {
       const value = this.state.queryCache.get(cacheKey);
-      // Hapus dan set ulang untuk memindahkannya ke akhir (menjadi yang terbaru)
       this.state.queryCache.delete(cacheKey);
       this.state.queryCache.set(cacheKey, value);
       return value;
     }
-
     const queryWords = query.toLowerCase().split(/\s+/);
     for (const word of queryWords) {
       if (this.state.hybridIndex.keywordSearch.has(word)) {
@@ -648,23 +780,18 @@ class ThesisExaminerApp {
           content: analysis,
           type: "Index Hit",
         };
-
-        // --- PERBAIKAN #5: Implementasi logika penggusuran LRU/FIFO ---
-        // Dengan Map, key pertama adalah yang paling lama dimasukkan (atau diakses)
         if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
           const oldestKey = this.state.queryCache.keys().next().value;
-          this.state.queryCache.delete(oldestKey);
+          this.state.queryCache.delete(oldKeyestKey);
         }
         this.state.queryCache.set(cacheKey, result);
         return result;
       }
     }
-
     console.log("QUERY: Index Miss. Triggering AI Semantic Fallback.");
     const prompt = `You are a semantic router. Your task is to find the most relevant chapters to answer the user's query based on the document's structure.
       Return a valid JSON object with a single key "relevant_chapters", which is an array of chapter numbers.
       Example: {"relevant_chapters": [2, 4]}.`;
-
     const data = await this.callGroqWithRetry({
       model: this.FAST_MODEL,
       messages: [
@@ -679,12 +806,10 @@ class ThesisExaminerApp {
       temperature: 0.2,
       response_format: { type: "json_object" },
     });
-
     if (data.error) {
       console.error("AI Semantic Fallback failed:", data.error.message);
       return { source: "error", content: [], type: "AI Fallback Failed" };
     }
-
     const parsed = this.safeJsonParse(data.choices?.[0]?.message?.content);
     const relevantChapters = parsed?.relevant_chapters || [];
     const analyses = this.state.chapterAnalyses.filter((c) =>
@@ -695,7 +820,6 @@ class ThesisExaminerApp {
       content: analyses,
       type: "AI Fallback",
     };
-
     if (this.state.queryCache.size >= this.MAX_CACHE_SIZE) {
       const oldestKey = this.state.queryCache.keys().next().value;
       this.state.queryCache.delete(oldestKey);
@@ -705,20 +829,18 @@ class ThesisExaminerApp {
   }
 
   buildExaminerPrompt(context = null) {
+    // ... (fungsi ini tetap sama)
     const { language, agentMode, difficulty, currentLevel } = this.state;
-
     const languageInstruction =
       language === "indonesian"
         ? "ATURAN KETAT: Anda HARUS menggunakan Bahasa Indonesia untuk semua pertanyaan dan umpan balik."
         : "STRICT RULE: You MUST use English for all questions and feedback.";
-
     const difficultyInstructions = {
       easy: "Formulasikan pertanyaan yang langsung dan faktual berdasarkan konteks.",
       medium:
         "Formulasikan pertanyaan yang meminta pengguna menghubungkan konsep atau menjelaskan 'mengapa' di balik sebuah fakta dari konteks.",
       hard: "Formulasikan pertanyaan menantang yang mengkritik asumsi, menanyakan implikasi, atau menyajikan perspektif alternatif berdasarkan konteks.",
     };
-
     const agentModeInstructions = {
       strict:
         "Anda adalah Penguji Tesis 'Strict Teacher'. Anda bersikap kritis, langsung pada intinya, dan memberikan kritik yang tajam namun membangun. Harapkan jawaban yang presisi dan jangan ragu untuk menantang klaim pengguna.",
@@ -726,12 +848,10 @@ class ThesisExaminerApp {
         "Anda adalah Penguji Tesis 'Friendly Tutor'. Anda bersikap suportif, positif, dan membimbing. Ajukan pertanyaan yang mendalam dengan nada yang memotivasi. Berikan pujian untuk jawaban yang baik sebelum memberikan kritik.",
       exam: "Anda adalah 'Exam Simulator'. Anda bersikap formal, netral, dan objektif. Ajukan pertanyaan satu per satu TANPA memberikan umpan balik (kunci 'feedback' dalam JSON HARUS string kosong). Tujuannya adalah untuk menguji, bukan mengajar.",
     };
-
     const currentDifficulty =
       difficulty === "adaptive" ? currentLevel : difficulty;
     const difficultyInstruction = difficultyInstructions[currentDifficulty];
     const agentModeInstruction = agentModeInstructions[agentMode];
-
     let prompt = `You are a Thesis Examiner.
     ---
     **PERATURAN ANDA**
@@ -740,7 +860,6 @@ class ThesisExaminerApp {
     3. **Tingkat Kesulitan:** ${difficultyInstruction}
     ---
     `;
-
     if (context) {
       prompt += `A user has provided an answer. I have retrieved relevant context from their thesis to help you evaluate it.
         RICH CONTEXT: --- ${JSON.stringify(context, null, 2)} ---
@@ -762,25 +881,21 @@ class ThesisExaminerApp {
   }
 
   adaptDifficulty(score) {
+    // ... (fungsi ini tetap sama)
     if (this.state.difficulty !== "adaptive") return;
-
     this.state.scoreHistory.push(score);
     if (this.state.scoreHistory.length > 5) {
       this.state.scoreHistory.shift();
     }
-
     const recentScores = this.state.scoreHistory.slice(-3);
-    if (recentScores.length < 3) return; // Tunggu sampai ada cukup data
-
+    if (recentScores.length < 3) return;
     const averageScore =
       recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
-
     console.log(
       `Adapting difficulty. Recent scores: [${recentScores.join(
         ", "
       )}], Average: ${averageScore.toFixed(1)}`
     );
-
     if (averageScore > 85 && this.state.currentLevel !== "hard") {
       this.state.currentLevel =
         this.state.currentLevel === "easy" ? "medium" : "hard";
@@ -797,6 +912,7 @@ class ThesisExaminerApp {
   }
 
   async sendMessage() {
+    // ... (fungsi ini tetap sama, tidak ada perubahan logika UI yang signifikan di sini)
     if (!this.state.sessionActive || this.dom.sendBtn.disabled) return;
     const answer = this.dom.answerInput.value.trim();
     if (!answer) return;
@@ -804,9 +920,8 @@ class ThesisExaminerApp {
     const userMessage = { role: "user", content: answer };
     this.renderMessage("user", answer);
     this.state.chatHistory.push(userMessage);
-    // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
     if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-        this.state.chatHistory.shift();
+      this.state.chatHistory.shift();
     }
 
     this.dom.answerInput.value = "";
@@ -819,7 +934,7 @@ class ThesisExaminerApp {
         "Sesi ujian selesai. Terima kasih atas partisipasi Anda!"
       );
       this.showTypingIndicator(false);
-      this.setInputDisabled(false);
+      this.setInputDisabled(false); // Biarkan input aktif untuk restart
       this.state.sessionActive = false;
       return;
     }
@@ -855,20 +970,21 @@ class ThesisExaminerApp {
     }
 
     this.adaptDifficulty(response.score);
-    
+
     if (this.state.agentMode !== "exam" && response.feedback) {
       this.renderMessage("ai", `*Feedback: ${response.feedback}*`);
     }
 
     if (response.next_question) {
       this.renderMessage("ai", response.next_question);
-      const assistantMessage = { role: "assistant", content: JSON.stringify(response) };
+      const assistantMessage = {
+        role: "assistant",
+        content: JSON.stringify(response),
+      };
       this.state.chatHistory.push(assistantMessage);
-      // --- PERBAIKAN #6: Pangkas riwayat chat jika melebihi batas ---
       if (this.state.chatHistory.length > this.MAX_HISTORY_LENGTH) {
-          this.state.chatHistory.shift();
+        this.state.chatHistory.shift();
       }
-
       this.state.questionsAsked++;
     } else {
       this.renderMessage(
@@ -876,9 +992,8 @@ class ThesisExaminerApp {
         "Saya tidak dapat menghasilkan pertanyaan berikutnya. Sesi mungkin perlu dimulai ulang."
       );
     }
-    
-    this.saveSessionToStorage();
 
+    this.saveSessionToStorage();
     this.showTypingIndicator(false);
     this.setInputDisabled(false);
     this.dom.answerInput.focus();
@@ -905,20 +1020,30 @@ class ThesisExaminerApp {
       hybridIndex: {},
       queryCache: new Map(),
     });
+
     if (resetUI) {
       this.dom.chatBox.innerHTML = "";
       this.dom.chatBox.appendChild(this.dom.typingIndicator);
-      this.dom.materialSection.classList.remove("hidden");
-      this.dom.chatSection.classList.add("hidden");
-      this.dom.loadingSpinner.classList.add("hidden");
+
+      // --- REFACTOR: Gunakan transisi CSS ---
+      this.dom.chatSection.classList.add("fade-slide-exit-active");
+      this.dom.loadingSpinner.classList.add("hidden"); // Pastikan spinner mati
+      setTimeout(() => {
+        this.dom.chatSection.classList.add("hidden");
+        this.dom.chatSection.classList.remove("fade-slide-exit-active");
+        this.dom.materialSection.classList.remove("hidden", "fade-slide-enter");
+        this.dom.materialSection.classList.add("fade-slide-enter-active");
+      }, 400);
+      // --- END REFACTOR ---
+
       this.setInputDisabled(false);
       this.dom.difficultySelect.value = "adaptive";
       this.dom.agentModeSelect.value = "friendly";
       this.dom.languageSelect.value = "indonesian";
+
+      // --- BARU: Sembunyikan juga viewer ---
+      this.dom.docViewer.classList.add("hidden");
+      this.dom.toggleViewerBtn.classList.add("hidden");
     }
   }
 }
-
-document.addEventListener("DOMContentLoaded", () => {
-  new ThesisExaminerApp();
-});
