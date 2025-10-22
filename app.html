@@ -321,13 +321,13 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
     <script src="./app.js"></script>
 
     <script>
-      // Seluruh logika UI (elements, transisi, viewer, toggle)
-      // sekarang sudah dipindahkan ke dalam file app.js.
-      // Kita hanya perlu menjalankan kelasnya di sini.
       document.addEventListener("DOMContentLoaded", () => {
         if (typeof ThesisExaminerApp !== "undefined") {
           new ThesisExaminerApp();
@@ -340,4 +340,5 @@
     </script>
   </body>
 </html>
+
 
